@@ -28,7 +28,7 @@
     "prepare:p4-assets": "node scripts/prepare-p4-ready-assets.mjs",
     "pack-builtins": "node scripts/pack-builtin-clawpkgs.cjs",
     "test": "npm run check:provenance && node scripts/run-node-tests.mjs src",
-    "test:bridge": "node scripts/run-node-tests.mjs src-tauri/bridge/test src-tauri/bridge/packages/agent-session-bus/test"
+    "test:bridge": "node scripts/prepare-bridge-test-fixtures.mjs && node scripts/run-node-tests.mjs src-tauri/bridge/test src-tauri/bridge/packages/agent-session-bus/test"
   },
   "dependencies": {
     "@tauri-apps/api": "2.11.1",
