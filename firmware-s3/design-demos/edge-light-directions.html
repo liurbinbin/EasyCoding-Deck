@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EasyCoding Deck · 圆角边缘光效方向</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #080a0b; color: #f1f4f5; min-width: 1120px; }
+    main { width: 1120px; margin: 0 auto; padding: 38px 40px 46px; }
+    header { display: flex; align-items: end; justify-content: space-between; margin-bottom: 26px; }
+    h1 { margin: 0; font-size: 27px; font-weight: 650; letter-spacing: 0; }
+    .subtitle { color: #8a9298; font-size: 13px; line-height: 1.55; text-align: right; }
+    .directions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    article { min-width: 0; border: 1px solid #252a2e; background: #101315; padding: 18px; border-radius: 6px; }
+    article.recommended { border-color: #347e87; box-shadow: inset 0 0 0 1px rgba(40,224,241,.08); }
+    .topline { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    h2 { margin: 0; font-size: 17px; font-weight: 620; letter-spacing: 0; }
+    .tag { color: #65f4ff; border: 1px solid #28656b; padding: 3px 7px; border-radius: 3px; font-size: 11px; }
+    .screens { display: grid; grid-template-columns: repeat(3, 84px); justify-content: space-between; gap: 8px; }
+    .state { text-align: center; }
+    .screen { width: 84px; height: 84px; position: relative; overflow: hidden; border-radius: 18px; background: #000; }
+    .screen svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .screen .copy { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .copy b { font: 650 8px/1 "Segoe UI", sans-serif; color: #eef3f4; letter-spacing: 0; }
+    .copy span { margin-top: 5px; font: 500 5px/1 "Segoe UI", sans-serif; color: #687177; }
+    .label { margin-top: 8px; color: #7d878d; font-size: 10px; }
+    .cyan { color: #37eaf5; } .green { color: #55eb9c; } .red { color: #ff515c; }
+    .notes { min-height: 86px; margin: 18px 0 0; color: #a8b0b5; font-size: 12px; line-height: 1.65; }
+    .metrics { border-top: 1px solid #252a2e; padding-top: 12px; display: flex; justify-content: space-between; color: #737d83; font-size: 11px; }
+    .swatches { display: flex; gap: 5px; }
+    .swatches i { width: 12px; height: 12px; border-radius: 2px; display: block; }
+    .trail { fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 3; filter: drop-shadow(0 0 2px currentColor); }
+    .base { fill: none; stroke: currentColor; stroke-width: 1; opacity: .12; }
+    .a-left, .a-right { stroke-dasharray: 29 260; animation: comet 1.65s linear infinite; }
+    .a-right { animation-delay: -.82s; }
+    .done .a-left, .done .a-right { animation-duration: 1.05s; }
+    .error .a-left, .error .a-right { animation-duration: .68s; stroke-dasharray: 17 270; }
+    .rail { fill: none; stroke: currentColor; stroke-width: 2; opacity: .25; }
+    .packet { fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; stroke-dasharray: 15 274; animation: rail 2.2s linear infinite; }
+    .packet.alt { animation-delay: -1.1s; }
+    .done .packet { animation-duration: 1.2s; }
+    .error .packet { animation-duration: .75s; }
+    .segment { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 10 10; animation: breathe 1.8s ease-in-out infinite; }
+    .segment.s2 { animation-delay: -.45s; }.segment.s3 { animation-delay: -.9s; }.segment.s4 { animation-delay: -1.35s; }
+    .done .segment { animation-duration: 1.1s; }.error .segment { animation-duration: .58s; }
+    @keyframes comet { from { stroke-dashoffset: 0; opacity: .25; } 18% { opacity: 1; } 82% { opacity: 1; } to { stroke-dashoffset: -289; opacity: .25; } }
+    @keyframes rail { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -289; } }
+    @keyframes breathe { 0%,100% { opacity: .15; } 50% { opacity: 1; filter: drop-shadow(0 0 3px currentColor); } }
+    footer { margin-top: 22px; display: flex; justify-content: space-between; color: #667178; font-size: 11px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>圆角边缘光效 · 方向选择</h1></div>
+    <div class="subtitle">真实比例：128 × 128 px<br>内缩 3 px · 圆角半径 18 px</div>
+  </header>
+  <section class="directions">
+    <article class="recommended">
+      <div class="topline"><h2>A · 双彗星分流</h2><span class="tag">推荐</span></div>
+      <div class="screens">
+        <div class="state"><div class="screen cyan"><svg viewBox="0 0 84 84"><rect class="base" x="3" y="3" width="78" height="78" rx="17"/><path class="trail a-left" d="M42 3H20A17 17 0 0 0 3 20V64A17 17 0 0 0 20 81H42"/><path class="trail a-right" d="M42 3H64A17 17 0 0 1 81 20V64A17 17 0 0 1 64 81H42"/></svg><div class="copy"><b>WORKING</b><span>BUILDING</span></div></div><div class="label">运行</div></div>
+        <div class="state"><div class="screen green done"><svg viewBox="0 0 84 84"><rect class="base" x="3" y="3" width="78" height="78" rx="17"/><path class="trail a-left" d="M42 3H20A17 17 0 0 0 3 20V64A17 17 0 0 0 20 81H42"/><path class="trail a-right" d="M42 3H64A17 17 0 0 1 81 20V64A17 17 0 0 1 64 81H42"/></svg><div class="copy"><b>DONE</b><span>COMPLETE</span></div></div><div class="label">完成</div></div>
+        <div class="state"><div class="screen red error"><svg viewBox="0 0 84 84"><rect class="base" x="3" y="3" width="78" height="78" rx="17"/><path class="trail a-left" d="M42 3H20A17 17 0 0 0 3 20V64A17 17 0 0 0 20 81H42"/><path class="trail a-right" d="M42 3H64A17 17 0 0 1 81 20V64A17 17 0 0 1 64 81H42"/></svg><div class="copy"><b>ERROR</b><span>CHECK LOG</span></div></div><div class="label">异常</div></div>
+      </div>
+      <p class="notes">两束短光从顶部中央同时分开，沿圆角向下运行，在底部中央会合。方向明确、画面干净；完成时只跑一圈并短暂点亮全边，异常时双脉冲。</p>
+      <div class="metrics"><span>刷新：窄边框 + 两段短尾迹</span><div class="swatches"><i style="background:#37eaf5"></i><i style="background:#55eb9c"></i><i style="background:#ff515c"></i></div></div>
+    </article>
+    <article>
+      <div class="topline"><h2>B · 常亮能量轨</h2><span class="tag" style="color:#b9c1c5;border-color:#3a4145">稳定</span></div>
+      <div class="screens">
+        <div class="state"><div class="screen cyan"><svg viewBox="0 0 84 84"><rect class="rail" x="3" y="3" width="78" height="78" rx="17"/><rect class="packet" x="3" y="3" width="78" height="78" rx="17" pathLength="289"/><rect class="packet alt" x="3" y="3" width="78" height="78" rx="17" pathLength="289"/></svg><div class="copy"><b>WORKING</b><span>BUILDING</span></div></div><div class="label">运行</div></div>
+        <div class="state"><div class="screen green done"><svg viewBox="0 0 84 84"><rect class="rail" x="3" y="3" width="78" height="78" rx="17"/><rect class="packet" x="3" y="3" width="78" height="78" rx="17" pathLength="289"/><rect class="packet alt" x="3" y="3" width="78" height="78" rx="17" pathLength="289"/></svg><div class="copy"><b>DONE</b><span>COMPLETE</span></div></div><div class="label">完成</div></div>
+        <div class="state"><div class="screen red error"><svg viewBox="0 0 84 84"><rect class="rail" x="3" y="3" width="78" height="78" rx="17"/><rect class="packet" x="3" y="3" width="78" height="78" rx="17" pathLength="289"/><rect class="packet alt" x="3" y="3" width="78" height="78" rx="17" pathLength="289"/></svg><div class="copy"><b>ERROR</b><span>CHECK LOG</span></div></div><div class="label">异常</div></div>
+      </div>
+      <p class="notes">整圈保留低亮度轨道，两枚高亮能量块沿边缘循环。始终能看到状态色，偏设备仪表风；但静态边框占用更明显，更新像素也最多。</p>
+      <div class="metrics"><span>刷新：整圈底轨 + 两枚光包</span><div class="swatches"><i style="background:#37eaf5"></i><i style="background:#55eb9c"></i><i style="background:#ff515c"></i></div></div>
+    </article>
+    <article>
+      <div class="topline"><h2>C · 分段呼吸环</h2><span class="tag" style="color:#b9c1c5;border-color:#3a4145">克制</span></div>
+      <div class="screens">
+        <div class="state"><div class="screen cyan"><svg viewBox="0 0 84 84"><rect class="segment s1" x="3" y="3" width="78" height="78" rx="17" pathLength="80"/><rect class="segment s2" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(90 42 42)"/><rect class="segment s3" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(180 42 42)"/><rect class="segment s4" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(270 42 42)"/></svg><div class="copy"><b>WORKING</b><span>BUILDING</span></div></div><div class="label">运行</div></div>
+        <div class="state"><div class="screen green done"><svg viewBox="0 0 84 84"><rect class="segment s1" x="3" y="3" width="78" height="78" rx="17" pathLength="80"/><rect class="segment s2" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(90 42 42)"/><rect class="segment s3" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(180 42 42)"/><rect class="segment s4" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(270 42 42)"/></svg><div class="copy"><b>DONE</b><span>COMPLETE</span></div></div><div class="label">完成</div></div>
+        <div class="state"><div class="screen red error"><svg viewBox="0 0 84 84"><rect class="segment s1" x="3" y="3" width="78" height="78" rx="17" pathLength="80"/><rect class="segment s2" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(90 42 42)"/><rect class="segment s3" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(180 42 42)"/><rect class="segment s4" x="3" y="3" width="78" height="78" rx="17" pathLength="80" transform="rotate(270 42 42)"/></svg><div class="copy"><b>ERROR</b><span>CHECK LOG</span></div></div><div class="label">异常</div></div>
+      </div>
+      <p class="notes">边缘被拆成连续短段，亮度从顶部向两侧逐段呼吸。更柔和、适合长时间运行；方向感弱于 A，异常状态需要提高频率才能足够醒目。</p>
+      <div class="metrics"><span>刷新：分段亮度变化</span><div class="swatches"><i style="background:#37eaf5"></i><i style="background:#55eb9c"></i><i style="background:#ff515c"></i></div></div>
+    </article>
+  </section>
+  <footer><span>EasyCoding Deck / Firmware motion study</span><span>物理圆角安全区：3 px</span></footer>
+</main>
+</body>
+</html>

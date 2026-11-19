@@ -1,0 +1,17 @@
+{
+  "dashboard": {
+    "title": "像素贪吃蛇",
+    "eyebrow": "准备开始",
+    "headline": "准备好了吗",
+    "metricLabel": "食物",
+    "metricValue": "0",
+    "note": "READY",
+    "footer": "SW1开始 · 摇杆左右转向 · 全局键退出",
+    "visualStyle": "clean",
+    "visualPalette": "mint",
+    "visualLayout": "arcade",
+    "visualSprite": "snake",
+    "metricUnit": "开始游戏",
+    "badge": "0"
+  }
+}

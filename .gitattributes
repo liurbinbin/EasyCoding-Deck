@@ -1,0 +1,15 @@
+* text=auto eol=lf
+# Public release resources are kept in ordinary Git so a fresh checkout does
+# not depend on the repository owner's separate LFS bandwidth/storage budget.
+*.h264 binary
+*.mjpg binary
+*.wav binary
+*.bin binary
+
+# Upstream legal and vendored files must retain their original bytes.
+licenses/** -text -whitespace
+**/licenses/** -text -whitespace
+**/LICENSE* -text -whitespace
+**/NOTICE* -text -whitespace
+**/THIRD_PARTY_NOTICES* -text -whitespace
+integrations/**/vendor/** -text -whitespace

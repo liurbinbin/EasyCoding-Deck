@@ -1,0 +1,16 @@
+{
+  "dashboard": {
+    "title": "Token 仪表盘",
+    "eyebrow": "当前 Agent",
+    "headline": "等待今日统计",
+    "metricLabel": "总 Token",
+    "metricValue": "—",
+    "metricUnit": "TOKEN",
+    "note": "缓存 —",
+    "footer": "统计来自当前 Agent 的本地可读记录，不代表账单。",
+    "visualStyle": "clean",
+    "visualPalette": "ocean",
+    "visualLayout": "tool",
+    "visualSprite": "gauge"
+  }
+}

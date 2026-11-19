@@ -1,0 +1,307 @@
+/**
+ * [Input] HTTP request descriptors from provider scripts.
+ * [Output] desktop-first HTTP bridge + retry helpers and actionable errors preserving model-specific request labels.
+ * [Pos] lib node in pc/src/lib/avatar-pipeline
+ * [Sync] If this file changes, update this header and the Tauri runtime command list that depends on these helpers.
+ */
+
+import { recordDiagnostic, parseNativeDiagnostic, formatDiagnostic, transportHint, safeRequestId } from "./diagnostics.js";
+import { generationRequestTimeoutMs, waitForNativeGeneration } from "./request-policy.js";
+
+let cachedTauriFetch; // undefined = not probed yet; null = probed, unavailable
+let cachedTauriInvoke; // undefined = not probed; null = unavailable
+
+function isTauriRuntime() {
+  return (
+    typeof window !== "undefined" &&
+    (Boolean(window.__TAURI_INTERNALS__) || Boolean(window.__TAURI__))
+  );
+}
+
+function normalizeHeaders(headers) {
+  if (!headers) return {};
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries());
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers);
+  }
+  return { ...headers };
+}
+
+function normalizeBody(body) {
+  if (body == null) return null;
+  if (typeof body === "string") return body;
+  if (body instanceof URLSearchParams) return body.toString();
+  return String(body);
+}
+
+function isMissingTauriCommand(err) {
+  const raw = String(err?.message || err || "");
+  return /command\s+[`'"]?http_request_text[`'"]?\s+not found|unknown command\s*:?\s*[`'"]?http_request_text/i.test(raw);
+}
+
+function buildTransportError(err, { url, method, label, diagnostic }) {
+  const details = parseNativeDiagnostic(err) || diagnostic;
+  if (details) {
+    const safe = recordDiagnostic(details);
+    const error = new Error(`云服务请求失败：${transportHint(safe)}\n${formatDiagnostic(safe)}`);
+    error.diagnostic = safe;
+    return error;
+  }
+  const raw = err?.message || String(err);
+  // Rust supplies sanitized, actionable errors. Do not add signed URLs or dump
+  // native/plugin exceptions, which can contain query credentials and proxy URLs.
+  const hint = label === "tauri-invoke" || label === "download-bytes"
+    ? raw.replace(/https?:\/\/[^\s）)]+/gi, "[服务地址]")
+    : "请检查网络、证书及 API 配置中的云服务网络设置。";
+  return new Error(`云服务请求失败：${hint}`);
+}
+
+async function getTauriInvoke() {
+  if (cachedTauriInvoke !== undefined) return cachedTauriInvoke;
+  if (!isTauriRuntime()) {
+    cachedTauriInvoke = null;
+    return null;
+  }
+  try {
+    const mod = await import("@tauri-apps/api/core");
+    cachedTauriInvoke = typeof mod.invoke === "function" ? mod.invoke : null;
+  } catch (err) {
+    console.warn("[pipelineFetch] failed to load @tauri-apps/api/core:", err);
+    cachedTauriInvoke = null;
+  }
+  return cachedTauriInvoke;
+}
+
+async function getTauriFetch() {
+  if (cachedTauriFetch !== undefined) return cachedTauriFetch;
+  if (!isTauriRuntime()) {
+    cachedTauriFetch = null;
+    return null;
+  }
+  try {
+    const mod = await import("@tauri-apps/plugin-http");
+    if (typeof mod.fetch !== "function") {
+      console.warn("[pipelineFetch] plugin-http loaded but `fetch` missing", mod);
+      cachedTauriFetch = null;
+      return null;
+    }
+    cachedTauriFetch = mod.fetch;
+  } catch (err) {
+    console.warn("[pipelineFetch] failed to load @tauri-apps/plugin-http:", err);
+    cachedTauriFetch = null;
+  }
+  return cachedTauriFetch;
+}
+
+/**
+ * Fetch via Rust-side Tauri command when available (bypasses CORS + JS plugin
+ * detection issues), then Tauri HTTP plugin, and finally browser fetch for
+ * pure-web dev (`npm run dev:web`).
+ */
+export async function pipelineFetch(input, init = {}) {
+  if (init.signal?.aborted) throw new DOMException('aborted', 'AbortError');
+  const url = typeof input === "string" ? input : String(input);
+  const method = init?.method || "GET";
+  const invoke = await getTauriInvoke();
+  const started = Date.now();
+  const fallbackDiagnostic = (phase, outcome, response) => ({
+    timestampMs: started, localId: globalThis.crypto?.randomUUID?.() || `local-${started}`,
+    stage: init.diagnosticStage, phase, outcome, elapsedMs: Date.now() - started,
+    timeoutMs: 0, status: response?.status,
+    requestId: safeRequestId(response?.headers?.get("x-request-id") || response?.headers?.get("x-tt-logid")),
+  });
+
+  if (invoke) {
+    try {
+      const result = await waitForNativeGeneration(() => invoke("http_request_text", {
+        url,
+        method,
+        headersJson: JSON.stringify(normalizeHeaders(init.headers)),
+        body: normalizeBody(init.body),
+        timeoutMs: generationRequestTimeoutMs(init),
+        diagnosticStage: init.diagnosticStage,
+      }), init.signal);
+      if (init.signal?.aborted) throw new DOMException("aborted", "AbortError");
+      const response = new Response(result?.body ?? "", {
+        status: Number(result?.status) || 200,
+      });
+      response.generationDiagnostic = recordDiagnostic(result.diagnostic || fallbackDiagnostic("complete", response.ok ? "success" : "http_error", response));
+      return response;
+    } catch (err) {
+      if (err?.name === "AbortError" || init.signal?.aborted) {
+        throw new DOMException("aborted", "AbortError");
+      }
+      if (!isMissingTauriCommand(err)) {
+        const safeError = buildTransportError(err, { url, method, label: "tauri-invoke" });
+        console.error("[pipelineFetch/tauri-invoke]", safeError.message);
+        throw safeError;
+      }
+      console.warn("[pipelineFetch] http_request_text unavailable, falling back:", err);
+    }
+  }
+
+  const tauriFetch = await getTauriFetch();
+  const label = tauriFetch ? "tauri-http" : "browser-fetch";
+  try {
+    const impl = tauriFetch || fetch;
+    const response = await impl(input, init);
+    response.generationDiagnostic = recordDiagnostic(fallbackDiagnostic("response_body", response.ok ? "success" : "http_error", response));
+    return response;
+  } catch (err) {
+    if (err?.name === "AbortError") throw err;
+    const safeError = buildTransportError(err, { url, method, label, diagnostic: fallbackDiagnostic("unknown", "transport_error") });
+    console.error(`[pipelineFetch/${label}]`, safeError.message);
+    throw safeError;
+  }
+}
+
+/**
+ * Retry with exponential backoff. Honours AbortSignal between attempts.
+ * @param {() => Promise<T>} fn
+ * @param {{ retries?: number, signal?: AbortSignal, baseDelayMs?: number, maxDelayMs?: number, shouldRetry?: (err: unknown, attempt: number) => boolean }} opts
+ * @returns {Promise<T>}
+ * @template T
+ */
+export async function withRetry(fn, opts = {}) {
+  const retries = opts.retries ?? 5;
+  const baseDelay = opts.baseDelayMs ?? 2000;
+  const maxDelay = opts.maxDelayMs ?? 30000;
+  const signal = opts.signal;
+  const shouldRetry = opts.shouldRetry || (() => true);
+
+  let attempt = 0;
+  while (true) {
+    if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+    try {
+      return await fn();
+    } catch (err) {
+      attempt += 1;
+      if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+      if (attempt > retries || !shouldRetry(err, attempt)) {
+        throw err;
+      }
+      const delay = Math.min(maxDelay, baseDelay * 2 ** (attempt - 1));
+      await sleep(delay, signal);
+    }
+  }
+}
+
+export function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      cleanup();
+      reject(new DOMException("aborted", "AbortError"));
+    };
+    function cleanup() {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", onAbort);
+    }
+    if (signal) signal.addEventListener("abort", onAbort);
+  });
+}
+
+/**
+ * Download binary bytes. Prefers a Rust-side `download_bytes` command so we
+ * bypass plugin-http's `new Headers(responseHeaders)` path, which throws
+ * `TypeError` when the server returns header values containing non-ASCII
+ * bytes (observed from Volcano TOS CDN `Content-Disposition`).
+ *
+ * Falls back to `pipelineFetch` in pure-web dev or if the command is missing.
+ *
+ * @param {string} url
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<Uint8Array>}
+ */
+export async function downloadBinary(url, signal, options = {}) {
+  if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+  const invoke = await getTauriInvoke();
+  if (invoke) {
+    try {
+      const bytes = await waitForNativeGeneration(() => invoke("download_bytes", { url,
+        ...(options.timeoutMs !== undefined ? {timeoutMs:options.timeoutMs} : {}),
+        ...(options.maxBytes !== undefined ? {maxBytes:options.maxBytes} : {}),
+      }), signal);
+      if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+      return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    } catch (err) {
+      if (err?.name === "AbortError") throw err;
+      const safeError = buildTransportError(err, { url, method: "GET", label: "download-bytes" });
+      console.error("[downloadBinary/tauri]", safeError.message);
+      throw safeError;
+    }
+  }
+  // Keep the same bounded contract in web development; legacy video callers
+  // without image options retain their existing download path.
+  const bounded = options.timeoutMs !== undefined || options.maxBytes !== undefined;
+  const controller = bounded ? new AbortController() : null;
+  const relay = () => controller?.abort();
+  signal?.addEventListener("abort", relay, {once:true});
+  let expired = false;
+  const timer = bounded ? setTimeout(() => {expired=true;controller.abort();}, Math.min(120000,Math.max(1,options.timeoutMs ?? 120000))) : null;
+  try {
+    const response = await pipelineFetch(url, { method: "GET", signal:controller?.signal || signal, diagnosticStage: "download" });
+    if (!response.ok) {
+      const error=new Error(`素材下载失败（HTTP ${response.status}）`);error.status=response.status;throw error;
+    }
+    if (!bounded) return new Uint8Array(await response.arrayBuffer());
+    const limit=Math.min(64*1024*1024,Math.max(1,options.maxBytes ?? 64*1024*1024));
+    const tooLarge=()=>Object.assign(new Error('图片下载超过安全字节上限'),{diagnostic:{outcome:'invalid_output'}});
+    if(Number(response.headers.get('content-length'))>limit)throw tooLarge();
+    if(!response.body) return new Uint8Array();
+    const reader=response.body.getReader();const chunks=[];let count=0;
+    try {
+      while(true){const {done,value}=await reader.read();if(done)break;
+        if(value.byteLength>limit-count)throw tooLarge();count+=value.byteLength;chunks.push(value);
+      }
+    } finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
+    const bytes=new Uint8Array(count);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return bytes;
+  } catch(error) {
+    if(signal?.aborted)throw new DOMException('aborted','AbortError');
+    if(expired)throw Object.assign(new Error('已知图片下载超时，结果链接已保留'),{diagnostic:{outcome:'timeout'}});
+    throw error;
+  } finally {if(timer!==null)clearTimeout(timer);signal?.removeEventListener('abort',relay);}
+}
+
+/** Treat non-2xx as throw-with-body for clearer error reporting. */
+export async function readJsonOrThrow(response, label) {
+  const text = await response.text();
+  if (!response.ok) {
+    const trimmed = text.length > 500 ? `${text.slice(0, 500)}...` : text;
+    const error = new Error(`${label} HTTP ${response.status}: ${trimmed}${response.status === 404 && label.startsWith("thinking model") ? "；模型不存在或账号无权访问，请在模型下拉框重新选择，不会自动改用其他模型。" : ""}`);
+    error.status = response.status;
+    try {
+      const parsed = JSON.parse(text);
+      const code = parsed?.error?.code;
+      if (typeof code === "string" && /^[A-Za-z0-9_.-]{1,128}$/.test(code)) {
+        error.providerCode = code;
+        error.completeProviderResponse = true;
+      }
+    } catch { /* incomplete/unstructured errors never authorize image POST retry */ }
+    error.diagnostic = response.generationDiagnostic;
+    throw error;
+  }
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${label} returned non-JSON response: ${text.slice(0, 200)}`);
+  }
+}
+
+// Configuration and permission failures cannot be repaired by repeating the
+// same paid request. Only explicit transient HTTP failures are retried here;
+// transport failures have unknown execution outcome and require user action.
+export function shouldRetryTransientHttp(error) {
+  if (error?.name === "AbortError") return false;
+  return [408, 429, 500, 502, 503, 504].includes(error?.status);
+}

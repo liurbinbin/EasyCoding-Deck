@@ -1,0 +1,119 @@
+name: Windows desktop build
+run-name: Windows build (x64) · ${{ github.ref_name }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pc/**'
+      - 'integrations/**'
+      - 'LICENSE'
+      - 'THIRD_PARTY_NOTICES.md'
+      - '.github/workflows/windows-build.yml'
+      - '.github/scripts/prepare-windows-runtime.py'
+      - '.github/scripts/test_windows_runtime.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Windows x64 EXE and MSI
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CI: 'true'
+      CARGO_INCREMENTAL: '0'
+      RUSTUP_TOOLCHAIN: stable
+      CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
+      PET_MANAGER_TARGET_ARCH: x64
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          architecture: x64
+          cache: npm
+          cache-dependency-path: |
+            pc/package-lock.json
+            pc/src-tauri/bridge/packages/clawd-backend-service/package-lock.json
+      - name: Check public inputs and runtime importer
+        run: |
+          node pc/scripts/check-source-safety.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test pc/scripts/check-source-safety.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -I .github/scripts/test_windows_runtime.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Import checksum-pinned Windows runtime without running installer
+        run: python -I .github/scripts/prepare-windows-runtime.py
+      - name: Select native Node and Rust toolchain
+        run: |
+          if ((node -p 'process.arch') -ne 'x64') { throw 'Expected native x64 Node' }
+          "PET_MANAGER_NODE_BIN=$(node -p 'process.execPath')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          rustup toolchain install stable --profile minimal --no-self-update
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup target add $env:CARGO_BUILD_TARGET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustc --version
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: windows-cargo-v1-x64-${{ hashFiles('pc/src-tauri/Cargo.lock') }}
+      - name: Install locked frontend and bridge dependencies
+        run: |
+          npm --prefix pc ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix pc/src-tauri/bridge/packages/clawd-backend-service ci --omit=dev
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run frontend and bridge tests
+        working-directory: pc
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:bridge
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Windows EXE and MSI
+        working-directory: pc
+        run: npm run build:win -- --verbose
+      - name: Package downloadable installers and checksums
+        run: |
+          $bundle = "pc/src-tauri/target/$env:CARGO_BUILD_TARGET/release/bundle"
+          $exe = @(Get-ChildItem "$bundle/nsis/*.exe" -File -ErrorAction Stop)
+          $msi = @(Get-ChildItem "$bundle/msi/*.msi" -File -ErrorAction Stop)
+          if ($exe.Count -eq 0 -or $msi.Count -eq 0) { throw 'Both EXE and MSI installers are required' }
+          New-Item -ItemType Directory -Path artifacts -ErrorAction Stop | Out-Null
+          $exe + $msi | Copy-Item -Destination artifacts -ErrorAction Stop
+          $lines = Get-ChildItem artifacts -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          $lines | Set-Content artifacts/SHA256SUMS.txt -Encoding utf8
+          @"
+          ### EasyCoding Deck Windows x64
+
+          Commit: $env:GITHUB_SHA
+
+          Download the EXE or MSI from this run's **Artifacts** section. Install one format, not both.
+
+          **Signing:** not Authenticode signed; Windows SmartScreen may show an unknown publisher warning.
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: EasyCoding-Deck-Windows-x64-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

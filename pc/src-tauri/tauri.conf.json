@@ -1,0 +1,80 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "EasyCoding Deck",
+  "version": "0.1.199",
+  "identifier": "com.petmanager.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev:web",
+    "beforeBuildCommand": "npm run build:web",
+    "devUrl": "http://localhost:4173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "EasyCoding Deck",
+        "width": 1200,
+        "height": 760,
+        "minWidth": 900,
+        "minHeight": 540,
+        "visible": false,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "frame-src https://115.191.67.48; default-src 'self' tauri: ipc: http://ipc.localhost asset:; connect-src 'self' tauri: ipc: http://ipc.localhost asset: http://127.0.0.1:8181 blob: data:; img-src 'self' asset: http://asset.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob: data: mediastream:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self'; font-src 'self' data:;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPLOCALDATA/**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../dist/terrier-clips": "terrier-clips",
+      "../dist/builtin-appearances": "builtin-appearances",
+      "../builtin-clawpkgs": "builtin-clawpkgs",
+      "bridge/package.json": "bridge/package.json",
+      "bridge/packages/clawd-backend-service/package.json": "bridge/packages/clawd-backend-service/package.json",
+      "bridge/packages/clawd-backend-service/src": "bridge/packages/clawd-backend-service/src",
+      "bridge/packages/agent-session-bus/package.json": "bridge/packages/agent-session-bus/package.json",
+      "bridge/packages/agent-session-bus/src": "bridge/packages/agent-session-bus/src",
+      "bridge/agents": "bridge/agents",
+      "bridge/hooks": "bridge/hooks",
+      "bridge/packages/clawd-backend-service/node_modules": "bridge/packages/clawd-backend-service/node_modules",
+      "../skills/petui": "skills/petui",
+      "../scripts/voice-runtime-resources.mjs": "tools/voice-runtime-resources.mjs",
+      "../scripts/check-voice-runtime-windows.ps1": "tools/check-voice-runtime-windows.ps1",
+      "../../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../../integrations/dsh-easycoding-deck/package.json": "dsh-bridge/package.json",
+      "../../integrations/dsh-easycoding-deck/index.js": "dsh-bridge/index.js",
+      "../../integrations/dsh-easycoding-deck/dsh-bridge.js": "dsh-bridge/dsh-bridge.js",
+      "../../integrations/dsh-easycoding-deck/server.js": "dsh-bridge/server.js",
+      "../../integrations/dsh-easycoding-deck/client.js": "dsh-bridge/client.js",
+      "../../integrations/dsh-easycoding-deck/capability.js": "dsh-bridge/capability.js",
+      "../../integrations/dsh-easycoding-deck/windows-acl.js": "dsh-bridge/windows-acl.js",
+      "../../integrations/dsh-easycoding-deck/windows-acl.ps1": "dsh-bridge/windows-acl.ps1",
+      "../../integrations/dsh-easycoding-deck/host-contract.js": "dsh-bridge/host-contract.js",
+      "../../integrations/dsh-easycoding-deck/managed-install.js": "dsh-bridge/managed-install.js",
+      "../../integrations/dsh-easycoding-deck/vendor/js-yaml.cjs": "dsh-bridge/vendor/js-yaml.cjs",
+      "../../integrations/dsh-easycoding-deck/vendor/js-yaml-LICENSE": "dsh-bridge/vendor/js-yaml-LICENSE",
+      "../../integrations/dsh-easycoding-deck/dsh-state-contract.js": "dsh-bridge/dsh-state-contract.js",
+      "../../integrations/dsh-easycoding-deck/profile-metadata-windows-acl.js": "dsh-bridge/profile-metadata-windows-acl.js",
+      "../../integrations/dsh-easycoding-deck/profile-metadata-windows-acl.ps1": "dsh-bridge/profile-metadata-windows-acl.ps1"
+    }
+  }
+}

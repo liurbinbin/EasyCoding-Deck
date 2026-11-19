@@ -1,0 +1,21 @@
+{
+  "dashboard": {
+    "title": "番茄钟",
+    "eyebrow": "准备开始",
+    "headline": "选好时长，再开始。",
+    "metricLabel": "剩余时间",
+    "metricValue": "25:00",
+    "metricUnit": "开始专注",
+    "badge": "0",
+    "note": "开始前可调 5–60 分钟 · 休息 5 分钟",
+    "footer": "主键开始/暂停  副键跳过  全局键退出",
+    "progress": {
+      "value": 100,
+      "label": "本轮剩余"
+    },
+    "visualStyle": "clean",
+    "visualPalette": "sunset",
+    "visualLayout": "tool",
+    "visualSprite": "timer"
+  }
+}
