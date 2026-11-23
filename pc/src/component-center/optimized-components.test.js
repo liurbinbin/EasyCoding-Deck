@@ -5,7 +5,8 @@ import {fileURLToPath} from "node:url";
 import {initialApp,appAction,appAdvance,appHit,appVisible} from "./app-runtime.js";
 import {createClassicCore} from "./classic-core.js";
 const root=process.env.PET_OPTIMIZED_PACKAGE_DIR||fileURLToPath(new URL('../../builtin-clawpkgs',import.meta.url));
-const load=id=>JSON.parse(fs.readFileSync(`${root}/${id}/runtime/widget.json`));
+const packageDirectoryById={"hachimi-break":"break","hachimi-garden":"garden","hachimi-home":"home"};
+const load=id=>JSON.parse(fs.readFileSync(`${root}/${packageDirectoryById[id]||id}/runtime/widget.json`));
 const fixture={skip:!root};
 test("frog caps bond, retains durable counters, every interaction still responds",fixture,()=>{
   const r=load("bloomfrog_companion");let s=initialApp(r);
