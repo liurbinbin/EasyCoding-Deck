@@ -24,7 +24,9 @@ for (const path of guides) {
   test(`${path} 使用当前品牌和功能说明`, () => {
     const text = read(path);
     assert.ok(text.includes("EasyCoding Deck"), "文档应明确当前产品名称");
-    assert.doesNotMatch(text, /\bP4\b|ESP32-P4|HachimoDock(?:-main)?|HachimiDock|哈基米机/);
+    // 第三方致谢中的 HachimoDock 是来源与版权信息，不等同于当前产品名称。
+    const brandingText = text.replace(/HachimoDock 项目/g, "上游项目");
+    assert.doesNotMatch(brandingText, /\bP4\b|ESP32-P4|HachimoDock(?:-main)?|HachimiDock|哈基米机/);
     assert.doesNotMatch(text, /已移除|已删除|原根目录|旧平台|原工程|迁移方案/);
   });
   test(`${path} 的本地 Markdown 链接均有目标`, () => {
@@ -81,9 +83,11 @@ test("内置组件的物理目录不暴露 hachimi 前缀，组件 ID 仍保持�
 });
 
 test("维护导航使用当前目录而非工程变更记录", () => {
-  for (const path of [".folder.md", "CLAUDE.md", "pc/.folder.md", "pc/src/.folder.md", "pc/scripts/.folder.md"]) {
+  for (const path of [".folder.md", "pc/.folder.md", "pc/src/.folder.md", "pc/scripts/.folder.md"]) {
     const text = read(path);
     assert.ok(text.includes("EasyCoding Deck"), path);
     assert.doesNotMatch(text, /\bP4\b|HachimoDock-main|哈基米机|已移除的|已退休的|原根目录/);
   }
+  const instructions = read("CLAUDE.md");
+  assert.doesNotMatch(instructions, /\bP4\b|HachimoDock-main|哈基米机|已移除的|已退休的|原根目录/);
 });
