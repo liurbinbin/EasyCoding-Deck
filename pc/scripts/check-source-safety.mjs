@@ -11,6 +11,13 @@ const BLOCKED_PUBLICATION_MEDIA = new Set([
   'dba713d4f929eb69e7537fcac84bc4ff92dde2eb89f55bfa32ed999e30c0f746',
   '6eec1e03174f797057e27074a67569cf64b82423cf80405d4109888af88f6ffd',
 ]);
+// This public factory image contains mbedTLS' empty PEM marker strings in its
+// read-only error table. Permit only this exact reviewed image to avoid treating
+// marker text as a private key; credential-shaped values remain blocked.
+const APPROVED_FIRMWARE_MARKER_IMAGES = new Map([
+  ['firmware-s3/releases/firmware.factory.bin', '4728c485259a104b0f0f8dab0ba862d63054f8c9e9952cb0c6d9ce28dee84aaf'],
+]);
+const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const paths = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {cwd: root})
   .toString().split('\0').filter(Boolean);
@@ -33,8 +40,10 @@ for (const file of new Set(paths)) {
   // Scan ASCII credential markers in binary assets as well as source text.
   // Null bytes in a generated firmware image must not bypass this check.
   const text = bytes.toString();
-  if (/-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/.test(text)
-      || /\b(?:ark-[a-f0-9-]{25,}|sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{24,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|glpat-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,})/.test(text)) {
+  const approvedFirmwareMarkerImage = APPROVED_FIRMWARE_MARKER_IMAGES.get(file) === sha256(bytes);
+  const hasPrivateKeyMarker = /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/.test(text);
+  const hasCredentialToken = /\b(?:ark-[a-f0-9-]{25,}|sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{24,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|glpat-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,})/.test(text);
+  if ((hasPrivateKeyMarker && !approvedFirmwareMarkerImage) || hasCredentialToken) {
     problems.push(`${file}: potential credential; value redacted`);
   }
   if (text.includes(`${homedir()}/`)) problems.push(`${file}: personal build path`);

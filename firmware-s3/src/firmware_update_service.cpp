@@ -130,7 +130,7 @@ bool FirmwareUpdateService::parseSha256(const char* value) {
 
 bool FirmwareUpdateService::sha256Matches() {
   uint8_t digest[32] = {};
-  if (mbedtls_sha256_finish_ret(&sha256_, digest) != 0) return false;
+  if (mbedtls_sha256_finish(&sha256_, digest) != 0) return false;
   return expected_sha256_ == digestToHex(digest);
 }
 
@@ -165,7 +165,7 @@ bool FirmwareUpdateService::beginTransfer(JsonObjectConst payload,
     fail(response, "ota_begin_failed", "ESP32-S3 OTA partition could not be opened");
     return false;
   }
-  if (mbedtls_sha256_starts_ret(&sha256_, 0) != 0) {
+  if (mbedtls_sha256_starts(&sha256_, 0) != 0) {
     Update.abort();
     fail(response, "sha256_unavailable", "SHA-256 context could not be initialized");
     return false;
@@ -226,7 +226,7 @@ bool FirmwareUpdateService::appendChunk(JsonObjectConst payload,
   }
   const size_t written = Update.write(decoded, decoded_size);
   const int sha_result = written == decoded_size
-      ? mbedtls_sha256_update_ret(&sha256_, decoded, decoded_size) : -1;
+      ? mbedtls_sha256_update(&sha256_, decoded, decoded_size) : -1;
   heap_caps_free(decoded);
   if (written != decoded_size || sha_result != 0) {
     // 写入结果未知时必须终止当前事务，避免桌面端把同一序号重放到

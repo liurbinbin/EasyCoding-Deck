@@ -227,6 +227,20 @@ class TransportContractTests(unittest.TestCase):
         self.assertIn("lovyan03/LovyanGFX @ 1.3.0", config)
         self.assertNotIn("ArduinoJson @ ^", config)
         self.assertNotIn("LovyanGFX @ ^", config)
+    def test_mbedtls_sha256_uses_current_arduino_api(self):
+        source = (ROOT / "src" / "firmware_update_service.cpp").read_text(encoding="utf-8")
+        for function in ("mbedtls_sha256_starts", "mbedtls_sha256_update", "mbedtls_sha256_finish"):
+            self.assertIn(function, source)
+        for legacy_function in ("mbedtls_sha256_starts_ret", "mbedtls_sha256_update_ret", "mbedtls_sha256_finish_ret"):
+            self.assertNotIn(legacy_function, source)
+
+    def test_factory_image_descriptor_matches_public_artifact(self):
+        import hashlib
+        import json
+        artifact = ROOT / "releases" / "firmware.factory.bin"
+        descriptor = json.loads((ROOT / "releases" / "firmware.factory.json").read_text(encoding="utf-8"))
+        self.assertEqual(artifact.stat().st_size, descriptor["sizeBytes"])
+        self.assertEqual(hashlib.sha256(artifact.read_bytes()).hexdigest(), descriptor["sha256"])
 
 
 if __name__ == "__main__":

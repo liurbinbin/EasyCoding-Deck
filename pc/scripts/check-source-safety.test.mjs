@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const guard = readFileSync(new URL('./check-source-safety.mjs', import.meta.url));
+const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
 function check(files, { removed = [] } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'publication-guard-'));
@@ -61,6 +63,17 @@ test('Vite caches are rejected unless excluded from publication inputs', () => {
 test('ordinary binary resources and public service endpoints remain publishable', () => {
   const result = check({ 'image.bin': Buffer.from([0, 1, 2, 255]), 'service.js': 'export const endpoint = "https://example.org/api";' });
   assert.equal(result.status, 0, result.output);
+});
+
+test('the reviewed public factory image is accepted only by its exact digest', () => {
+  const result = spawnSync(process.execPath, ['pc/scripts/check-source-safety.mjs'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const descriptor = JSON.parse(readFileSync(join(repositoryRoot, 'firmware-s3/releases/firmware.factory.json'), 'utf8'));
+  assert.match(descriptor.sha256, /^[a-f0-9]{64}$/);
+  assert.match(guard.toString(), new RegExp(descriptor.sha256));
 });
 
 test('已删除但仍在 Git 索引中的文件不阻断扫描，现有文件继续检查', () => {
