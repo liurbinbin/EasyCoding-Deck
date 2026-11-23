@@ -1,0 +1,93 @@
+{
+  "format": "p4-h264-v1",
+  "systemCues": true,
+  "packId": "9ecce99622d731e1c3d9df518f6e12198f4ed0a61ec1f80301e6bee74bd3fbe9",
+  "codec": "h264",
+  "container": "annex-b",
+  "width": 640,
+  "height": 480,
+  "fps": 15,
+  "families": [
+    {
+      "family": "idle.default",
+      "path": "p4/families/sha256-aabe108973d61a2e077d4018.h264",
+      "frames": 39,
+      "streamBytes": 7194,
+      "fps": 15,
+      "frameDurationMs": 68,
+      "durationMs": 2630
+    },
+    {
+      "family": "touch.right",
+      "path": "p4/families/sha256-fc6356183a795eb7b1f16c97.h264",
+      "frames": 37,
+      "streamBytes": 12990,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 2460
+    },
+    {
+      "family": "touch.left",
+      "path": "p4/families/sha256-c70797cb2dfb62c4983ecc3e.h264",
+      "frames": 37,
+      "streamBytes": 12004,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 2460
+    },
+    {
+      "family": "welcome",
+      "path": "p4/families/sha256-27cb91363d84e2ffe94f1c07.h264",
+      "frames": 26,
+      "streamBytes": 5525,
+      "fps": 15,
+      "frameDurationMs": 68,
+      "durationMs": 1750
+    },
+    {
+      "family": "idle.jumping",
+      "path": "p4/families/sha256-ba9521c7e9ac685b590b4142.h264",
+      "frames": 31,
+      "streamBytes": 17498,
+      "fps": 15,
+      "frameDurationMs": 66,
+      "durationMs": 2040
+    },
+    {
+      "family": "error",
+      "path": "p4/families/sha256-575af629c36bb5be9f2e4ed4.h264",
+      "frames": 43,
+      "streamBytes": 17846,
+      "fps": 15,
+      "frameDurationMs": 66,
+      "durationMs": 2830
+    },
+    {
+      "family": "waiting_user",
+      "path": "p4/families/sha256-16b447aece6c46d516676958.h264",
+      "frames": 38,
+      "streamBytes": 13002,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 2540
+    },
+    {
+      "family": "working",
+      "path": "p4/families/sha256-bdab80b0b4e972d4488afa23.h264",
+      "frames": 29,
+      "streamBytes": 18970,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 1920
+    },
+    {
+      "family": "done",
+      "path": "p4/families/sha256-3f8f4482d64c18c48c23701b.h264",
+      "frames": 39,
+      "streamBytes": 12971,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 2580
+    }
+  ]
+}

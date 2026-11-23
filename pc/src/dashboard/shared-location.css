@@ -1,0 +1,192 @@
+/* Grouped location setting: keep labels, editable value, and action inside one padded surface. */
+.shared-location {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  padding: 4px 16px 16px;
+  color: var(--apple-label, #1d1d1f);
+  font-size: 13px;
+}
+
+.shared-location__row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--apple-separator-soft, #e8e8eb);
+}
+
+.shared-location__row:last-child {
+  border-bottom: 0;
+}
+
+.shared-location__label {
+  min-width: 0;
+  color: var(--apple-label, #1d1d1f);
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.shared-location__city {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--apple-label, #1d1d1f);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-location__mode {
+  color: var(--apple-secondary-label, #6e6e73);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.shared-location button {
+  min-width: 76px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--apple-separator, #d7d7dc);
+  border-radius: 7px;
+  background: var(--apple-grouped-secondary, #ffffff);
+  color: var(--apple-label, #1d1d1f);
+  font: inherit;
+  cursor: pointer;
+}
+
+.shared-location button:hover:not(:disabled) {
+  border-color: var(--apple-accent, #0a84ff);
+  background: var(--apple-accent-soft, rgba(10, 132, 255, 0.12));
+  color: var(--apple-accent, #0a84ff);
+}
+
+.shared-location button.shared-location__save {
+  min-width: 64px;
+  border-color: var(--apple-accent, #0a84ff);
+  background: var(--apple-accent, #0a84ff);
+  color: #ffffff;
+}
+
+.shared-location button.shared-location__save:hover:not(:disabled) {
+  border-color: #0077ed;
+  background: #0077ed;
+  color: #ffffff;
+}
+
+.shared-location button:disabled,
+.shared-location input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.shared-location :is(button, input):focus-visible {
+  outline: 2px solid var(--apple-accent, #0a84ff);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+}
+
+.shared-location__suggest-field {
+  position: relative;
+  min-width: 0;
+}
+
+.shared-location input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 5px 9px;
+  border: 1px solid #c7c7cc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--apple-label, #1d1d1f);
+  font: inherit;
+}
+
+.shared-location input::placeholder {
+  color: var(--apple-tertiary-label, #8e8e93);
+}
+
+.shared-location input[aria-invalid="true"] {
+  border-color: var(--apple-red, #c9342f);
+}
+
+.shared-location__feedback {
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 36px;
+  padding-top: 10px;
+  color: var(--apple-secondary-label, #6e6e73);
+  font-size: 12px;
+}
+
+.shared-location__feedback > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-location__feedback[role="alert"] {
+  color: var(--apple-red, #c9342f);
+}
+
+.shared-location__suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  left: 0;
+  right: 0;
+  max-height: 224px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--apple-separator, #d7d7dc);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--apple-label, #1d1d1f);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+}
+
+.shared-location__suggestion {
+  min-width: 0;
+  padding: 8px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.shared-location__suggestion:hover,
+.shared-location__suggestion--active {
+  background: var(--apple-accent-soft, rgba(10, 132, 255, 0.12));
+  color: var(--apple-accent, #0a84ff);
+}
+
+@media (max-width: 560px) {
+  .shared-location {
+    padding-inline: 12px;
+  }
+
+  .shared-location__row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 6px;
+    padding: 10px 0;
+  }
+
+  .shared-location__mode {
+    position: absolute;
+    right: 12px;
+    margin-top: -42px;
+  }
+
+  .shared-location__row > button,
+  .shared-location__feedback > button {
+    justify-self: start;
+  }
+}

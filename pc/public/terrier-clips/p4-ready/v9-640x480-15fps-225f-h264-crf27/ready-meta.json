@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 4,
+  "profile": "v9-640x480-15fps-225f-h264-crf27",
+  "packId": "657e08c95828bb517c68ce5bcb230d87f22d10789aaf81aa2353bedf407a268d",
+  "sourceAssets": [
+    {
+      "family": "done",
+      "videoSha256": "3badac5f27480079f9242f103ad46973741e6549adb459b2f21e7ebf73bca4fb",
+      "durationMs": 1000
+    },
+    {
+      "family": "error",
+      "videoSha256": "2399c7a46b7f9715c2afa4c38a5d942dbed73d730bac26a1c7320bbf9b9b8d6d",
+      "durationMs": 1000
+    },
+    {
+      "family": "idle.begging",
+      "videoSha256": "8d713be18444a34ea203d8af5c85e7e010ff1591cc432865a65c5160e6b18026",
+      "durationMs": 1000
+    },
+    {
+      "family": "idle.daydreaming",
+      "videoSha256": "c20c9ed4aea699ecef1531ea5adb11dd83dede68f2d8f28d159d8ed73ede4bf9",
+      "durationMs": 1000
+    },
+    {
+      "family": "idle.eating",
+      "videoSha256": "c20c9ed4aea699ecef1531ea5adb11dd83dede68f2d8f28d159d8ed73ede4bf9",
+      "durationMs": 1000
+    },
+    {
+      "family": "idle.playing",
+      "videoSha256": "c20c9ed4aea699ecef1531ea5adb11dd83dede68f2d8f28d159d8ed73ede4bf9",
+      "durationMs": 1000
+    },
+    {
+      "family": "idle.reading",
+      "videoSha256": "d6250c84c3b08c78083855488fc6684cf2774294d48256046aef0f807a4a6e73",
+      "durationMs": 1000
+    },
+    {
+      "family": "idle.traveling",
+      "videoSha256": "752ac6e6c2dd4f17f433229a2bd42fd1f96bfadc9d356e5db937d7c02cc686ba",
+      "durationMs": 1000
+    },
+    {
+      "family": "idle.wandering",
+      "videoSha256": "c20c9ed4aea699ecef1531ea5adb11dd83dede68f2d8f28d159d8ed73ede4bf9",
+      "durationMs": 1000
+    },
+    {
+      "family": "touch.lick",
+      "videoSha256": "24fad2a01c280966ec51cfbaf53eaa9f558724d7d8d7827a4d2143c4eceb9233",
+      "durationMs": 1000
+    },
+    {
+      "family": "touch.what",
+      "videoSha256": "3badac5f27480079f9242f103ad46973741e6549adb459b2f21e7ebf73bca4fb",
+      "durationMs": 1000
+    },
+    {
+      "family": "waiting_user",
+      "videoSha256": "8d713be18444a34ea203d8af5c85e7e010ff1591cc432865a65c5160e6b18026",
+      "durationMs": 1000
+    },
+    {
+      "family": "welcome",
+      "videoSha256": "24fad2a01c280966ec51cfbaf53eaa9f558724d7d8d7827a4d2143c4eceb9233",
+      "durationMs": 1000
+    },
+    {
+      "family": "working.browsing",
+      "videoSha256": "fb8d08bda89a955be750af7c04091cca61d9e739bf199640465805e6c6cf2acc",
+      "durationMs": 1000
+    },
+    {
+      "family": "working.thinking",
+      "videoSha256": "499ae9bd09e6e262985549113ad915cce61be39d448b35621f298e59d088720b",
+      "durationMs": 1000
+    },
+    {
+      "family": "working.typing",
+      "videoSha256": "d6250c84c3b08c78083855488fc6684cf2774294d48256046aef0f807a4a6e73",
+      "durationMs": 1000
+    }
+  ]
+}

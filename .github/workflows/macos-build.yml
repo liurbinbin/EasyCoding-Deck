@@ -1,0 +1,168 @@
+name: macOS desktop build
+run-name: macOS build (${{ inputs.architecture || 'arm64' }}) · ${{ github.ref_name }}
+
+on:
+  push:
+    branches: [main, ci/macos-build]
+    paths:
+      - 'pc/**'
+      - 'integrations/**'
+      - 'LICENSE'
+      - 'THIRD_PARTY_NOTICES.md'
+      - '.github/workflows/macos-build.yml'
+      - '.github/scripts/prepare-macos-runtime.py'
+      - '.github/scripts/test_macos_runtime.py'
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: 'macOS architecture: Apple Silicon, Intel, or both'
+        type: choice
+        options: [arm64, x64, both]
+        default: arm64
+      runtime_bundle_url:
+        description: 'Optional HTTPS URL of the audited FFmpeg bundle (single architecture only)'
+        type: string
+        default: ''
+      runtime_bundle_sha256:
+        description: 'SHA-256 of the bundle above; required when providing a URL'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-build-${{ github.ref }}-${{ inputs.architecture || 'arm64' }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    name: Source and CI contract checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.matrix.outputs.value }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: pc/package-lock.json
+      - name: Select build architecture
+        id: matrix
+        env:
+          REQUESTED_ARCH: ${{ inputs.architecture || 'arm64' }}
+          CUSTOM_RUNTIME_URL: ${{ inputs.runtime_bundle_url }}
+          CUSTOM_RUNTIME_SHA256: ${{ inputs.runtime_bundle_sha256 }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          const arch = process.env.REQUESTED_ARCH;
+          if (!['arm64', 'x64', 'both'].includes(arch)) throw new Error('Unsupported architecture');
+          if (arch === 'both' && (process.env.CUSTOM_RUNTIME_URL || process.env.CUSTOM_RUNTIME_SHA256))
+            throw new Error('Use per-architecture repository variables when building both architectures');
+          const rows = [
+            { arch: 'arm64', runner: 'macos-26', target: 'aarch64-apple-darwin', urlKey: 'MACOS_RUNTIME_ARM64_URL', hashKey: 'MACOS_RUNTIME_ARM64_SHA256' },
+            { arch: 'x64', runner: 'macos-26-intel', target: 'x86_64-apple-darwin', urlKey: 'MACOS_RUNTIME_X64_URL', hashKey: 'MACOS_RUNTIME_X64_SHA256' },
+          ].filter(row => arch === 'both' || row.arch === arch);
+          appendFileSync(process.env.GITHUB_OUTPUT, `value=${JSON.stringify({ include: rows })}\n`);
+          NODE
+      - name: Check public source inputs
+        run: |
+          node pc/scripts/check-source-safety.mjs
+          node --test pc/scripts/check-source-safety.test.mjs
+      - name: Check runtime bundle importer
+        run: python3 -I .github/scripts/test_macos_runtime.py
+      - name: Install locked frontend dependencies
+        working-directory: pc
+        run: npm ci
+      - name: Run frontend and bridge tests
+        working-directory: pc
+        run: |
+          npm test
+          npm run test:bridge
+
+  build:
+    name: macOS ${{ matrix.arch }} app and DMG
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.source.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: 'true'
+      CARGO_INCREMENTAL: '0'
+      RUSTUP_TOOLCHAIN: stable
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      PET_MANAGER_TARGET_ARCH: ${{ matrix.arch }}
+      MACOSX_DEPLOYMENT_TARGET: '26.0'
+      PET_MANAGER_CI_RUNTIME_URL: ${{ inputs.runtime_bundle_url || vars[matrix.urlKey] }}
+      PET_MANAGER_CI_RUNTIME_SHA256: ${{ inputs.runtime_bundle_sha256 || vars[matrix.hashKey] }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Require audited macOS runtime inputs
+        run: python3 -I .github/scripts/prepare-macos-runtime.py --arch "$PET_MANAGER_TARGET_ARCH"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          architecture: ${{ matrix.arch }}
+          cache: npm
+          cache-dependency-path: |
+            pc/package-lock.json
+            pc/src-tauri/bridge/packages/clawd-backend-service/package-lock.json
+      - name: Verify native architecture and select bundled Node
+        run: |
+          test "$(node -p 'process.arch')" = "$PET_MANAGER_TARGET_ARCH"
+          printf 'PET_MANAGER_NODE_BIN=%s\n' "$(node -p 'process.execPath')" >> "$GITHUB_ENV"
+          xcodebuild -version
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup target add "$CARGO_BUILD_TARGET"
+          rustc --version
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: macos-cargo-v1-${{ matrix.arch }}-${{ hashFiles('pc/src-tauri/Cargo.lock') }}
+      - name: Install locked frontend and bridge dependencies
+        run: |
+          npm --prefix pc ci
+          npm --prefix pc/src-tauri/bridge/packages/clawd-backend-service ci --omit=dev
+      - name: Build, ad-hoc sign, and verify app and DMG
+        working-directory: pc
+        run: npm run build:mac:ci
+      - name: Package downloadable artifacts
+        run: |
+          bundle="pc/src-tauri/target/$CARGO_BUILD_TARGET/release/bundle"
+          app="$bundle/macos/EasyCoding Deck.app"
+          test -d "$app"
+          mkdir -p artifacts
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "artifacts/EasyCoding-Deck-macOS-$PET_MANAGER_TARGET_ARCH.app.zip"
+          shopt -s nullglob
+          images=("$bundle"/dmg/*.dmg)
+          test "${#images[@]}" -gt 0
+          cp "${images[@]}" artifacts/
+          (cd artifacts && shasum -a 256 ./* > SHA256SUMS.txt)
+          {
+            printf '### EasyCoding Deck macOS %s\n\n' "$PET_MANAGER_TARGET_ARCH"
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Download the app ZIP or DMG from this run’s **Artifacts** section.\n\n'
+            printf '**Minimum system:** macOS 26.0.\n\n'
+            printf '**Signing:** ad-hoc signed, not Developer ID signed or notarized. macOS may block initial launch.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: EasyCoding-Deck-macOS-${{ matrix.arch }}-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

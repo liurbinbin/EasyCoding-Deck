@@ -1,0 +1,1721 @@
+/**
+ * [Input] Bound device, useDeviceContext for state, Tauri voice/USB events, API-settings navigation, and useToast for notices.
+ * [Output] Priority-ordered four-region device dashboard with runtime-aware Linux/P4/S3 control maps,
+ *          twelve exposed P4 button/joystick gestures (SW1-SW3 short/long plus
+ *          joystick center short/long and four directions), an internal hold transport for PTT,
+ *          shared draft-then-confirm voice enablement with ordered background microphone signals,
+ *          fully repeatable hardware actions with optional exit plus versioned default migration,
+ *          context-local previous/next selection and SW2 top-level page toggling,
+ *          bounded Agent prompt bindings, ACK-gated USB config,
+ *          exact-board identity on emergency appearance downlinks,
+ *          client-authoritative button reconciliation after serialized board reads,
+ *          deduplicated managed-bridge recovery/input injection, device-side Session title sync,
+ *          Agent-owned Session state that cannot leak across follow changes,
+ *          with polling/reduction and device synchronization delegated to focused hooks,
+ *          plus pure routing/merge/terminal-TTL policy in the P4 Session service,
+ *          always-on current-Agent conversation visibility with active-only admission,
+ *          explicit-transition 60-second done/error retention, serialized P4 downlinks,
+ *          empty-queue clearing and full active-ID signals,
+ *          exact visible-card encoder selection isolated from background routing,
+ *          manual and focus-refreshed local Agent discovery with visible scan feedback,
+ *          a default-open status-first voice console,
+ *          default-enabled first-run voice input that preserves an explicit user opt-out,
+ *          model-v9 P4 defaults that map joystick up/down to Previous/Next,
+ *          immediate P4 voice rearming after saved ASR configuration changes,
+ *          exact-session-only Codex/Claude Desktop task navigation and voice input for selected P4 conversations,
+ *          MiMoCode-only macOS final-text delivery plus Return at the captured current caret,
+ *          app-shell/native-operation-owned macOS Accessibility consent,
+ *          shared first-visit onboarding state with a reopenable page guide,
+ *          an ESP32-P4 A/B firmware update entry, shared current-key instructions,
+ *          a persona editor preserved while visiting API settings,
+ *          and compact volume/city controls below voice input with retained city drafts.
+ * [Pos] component node in pc/src
+ * [Sync] If this file changes, update this header and `pc/src/.folder.md`.
+ */
+
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { RefreshCw } from "lucide-react";
+import DeviceGuideModal from "./DeviceGuideModal.jsx";
+import {
+  ONBOARDING_PAGE_IDS,
+  shouldAutoOpenOnboarding,
+} from "./lib/onboarding-state.js";
+import PageShell from "./shell/PageShell.jsx";
+import Card from "./shell/Card.jsx";
+import Button from "./shell/Button.jsx";
+import { useDeviceContext } from "./shell/DeviceContext.jsx";
+import { buildUsageHelp } from "./lib/usage-help.js";
+import PersonaVoiceModal from "./PersonaVoiceModal.jsx";
+import { useToast } from "./shell/ToastStack.jsx";
+import DeviceStatusBar from "./dashboard/DeviceStatusBar.jsx";
+import DeviceVolumePanel from "./dashboard/DeviceVolumePanel.jsx";
+import SharedLocationPanel from "./dashboard/SharedLocationPanel.jsx";
+import { createSharedLocationController } from "./dashboard/shared-location-model.js";
+import { useExitProtection } from "./lib/exit-protection.js";
+import ChannelMatrixCard from "./dashboard/ChannelMatrixCard.jsx";
+import BoardButtonPanel from "./dashboard/BoardButtonPanel.jsx";
+import VoiceAssistantPanel, { buildVoiceSummary, formatVoiceSessionOption } from "./dashboard/VoiceAssistantPanel.jsx";
+import {voiceRuntimeTarget,createVoiceRuntimePoller} from "./dashboard/voice-runtime-target.js";
+import RealtimeChatPanel, { realtimeStateLabel } from "./dashboard/RealtimeChatPanel.jsx";
+import { isRecoveringAsr } from "./lib/realtime-feedback.js";
+import { useAgentSessionFeed } from "./dashboard/useAgentSessionFeed.js";
+import { useDeviceVoiceRouter } from "./dashboard/useDeviceVoiceRouter.js";
+import { subscribeAsrCredentialUpdates } from "./dashboard/voice-credential-events.js";
+import { useP4SessionSync } from "./dashboard/useP4SessionSync.js";
+import DashboardActionsMenu from "./dashboard/DashboardActionsMenu.jsx";
+import FirmwareUpdateModal from "./dashboard/FirmwareUpdateModal.jsx";
+import DeviceDiagnosticsModal from "./dashboard/DeviceDiagnosticsModal.jsx";
+import S3HardwarePanel from "./dashboard/S3HardwarePanel.jsx";
+import S3WifiPanel from "./dashboard/S3WifiPanel.jsx";
+import { ACTIVE_APPEARANCE_KEY } from "./lib/desktop-pet-assignment.js";
+import { observeAppearanceFromMenu, appearanceObservationError } from "./lib/appearance-readonly-observation.js";
+import { BUILTIN_TERRIER_APPEARANCE_ID } from "./lib/builtin-appearances.js";
+import { ensureBridgeRuntime } from "./lib/bridge-runtime.js";
+import { fetchAgentBusStatus } from "./lib/agent-bus-client.js";
+export {
+  buildP4ConversationQueue,
+  buildP4DeviceSessionTransportPayload,
+  buildP4RoutingSessions,
+  filterDismissedP4Sessions,
+  mergeP4SessionEvent,
+  mergeP4SessionSnapshot,
+  p4SessionActivitySignature,
+} from "./lib/p4-session-service.js";
+export {
+  cycleVoiceSessionId,
+  formatDeviceSessionContent,
+  formatDeviceSessionTitle,
+  isDeviceSessionTargetUnique,
+  P4_MANUAL_SESSION_TIMEOUT_MS,
+} from "./dashboard/useP4SessionSync.js";
+import {
+  DEVICE_BUTTON_CONFIG_MODEL_VERSION,
+  DEVICE_BUTTON_CONFIG_STORAGE_KEY,
+  migrateP4V7ShippedBoardDefaults,
+} from "./component-center/button-config.js";
+
+// ---------- Voice config storage + constants (re-exported for BoardButtonPanel) ----------
+
+export const VOICE_CONFIG_STORAGE_KEY = DEVICE_BUTTON_CONFIG_STORAGE_KEY;
+export const DEFAULT_VOICE_CONFIG = { enabled: true, trigger: "encoder_button.hold" };
+export const P4_RUNTIME_ID = "esp-p4";
+export const S3_RUNTIME_ID = "esp32-s3-tkeyboard";
+export const P4_DEFAULT_VOICE_TRIGGER = "sw1.hold";
+export const P4_DEFAULT_PROMPT = "继续当前任务并给出下一步。";
+
+export const DEFAULT_BUTTON_ACTIONS = {
+  encoder_button_short: "system_page",
+  encoder_button: "system_reset",
+  encoder_rotate: "volume_adjust",
+  p4_sw1_short: "page_enter",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "component_center",
+  p4_sw2_long: "realtime_chat",
+  p4_sw3_short: "page_back",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "disabled",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+  p4_joystick_up: "session_previous",
+  p4_joystick_down: "session_next",
+};
+
+export const P4_VOICE_BUTTON_OPTIONS = [
+  { id: P4_DEFAULT_VOICE_TRIGGER, rowId: "p4_sw1_long", label: "SW1 长按", detail: "按住 SW1 开始录音，松开后只写入草稿。", event: "button.sw1.hold" },
+  { id: "sw2.hold", rowId: "p4_sw2_long", label: "SW2 长按", detail: "按住 SW2 开始录音，松开后只写入草稿。", event: "button.sw2.hold" },
+  { id: "sw3.hold", rowId: "p4_sw3_long", label: "SW3 长按", detail: "按住 SW3 开始录音，松开后只写入草稿。", event: "button.sw3.hold" },
+  { id: "encoder_button.hold", rowId: "p4_encoder_long", label: "摇杆中按长按", detail: "按住摇杆中键开始录音，松开后只写入草稿。", event: "button.encoder.hold" },
+];
+export const S3_VOICE_BUTTON_OPTIONS = [1, 2, 3, 5].map((key) => ({
+  id: `sw${key}.hold`,
+  rowId: `s3_sw${key}_long`,
+  label: `按键 ${key} 长按`,
+  detail: `按住第 ${key} 块屏幕下方按键开始录音，松开后写入草稿。`,
+  event: `button.sw${key}.hold`,
+}));
+export const VOICE_BUTTON_OPTIONS = [...P4_VOICE_BUTTON_OPTIONS, ...S3_VOICE_BUTTON_OPTIONS];
+
+export const BUTTON_FUNCTION_OPTIONS = [
+  { id: "agent_prompt", label: "发送自定义指令", detail: "按下对应手势后，将该按钮下方填写的指令直接发送给当前 Code Agent。" },
+  { id: "voice_ptt", label: "语音输入", detail: "绑定到长按：按住说话，松开追加到输入框，确认后发送。" },
+  { id: "realtime_chat", label: "实时对话", detail: "在宠物界面触发后开始聊天，再次触发结束。组件运行时请先返回宠物界面。" },
+  { id: "session_previous", label: "上一个", detail: "宠物界面切换到上一个会话气泡；组件界面切换到上一个组件。" },
+  { id: "session_next", label: "下一个", detail: "宠物界面切换到下一个会话气泡；组件界面切换到下一个组件。" },
+  { id: "session_clear", label: "清空主页会话", detail: "清除设备主页当前显示的全部会话；新会话或新活动会自动重新显示。" },
+  { id: "dsh_interrupt", label: "打断 DSH 当前任务", detail: "仅在跟随 DeepSeek Harness 时可用：取消当前正在执行的回合。" },
+  { id: "component_center", label: "切换宠物/组件", detail: "切换宠物界面和组件列表；组件运行时请先返回。" },
+  { id: "page_enter", label: "确认", detail: "审批提示期间允许本次请求；平时发送当前文字输入或待确认语音草稿。" },
+  { id: "page_back", label: "返回（取消）", detail: "审批提示期间拒绝本次请求；平时取消语音草稿或清空当前文字输入。" },
+  { id: "disabled", label: "不绑定", detail: "不为这个操作分配功能。" },
+  { id: "system_page", label: "系统切页", detail: "保持 main / stats 页面切换，适合旋钮短按。" },
+  { id: "system_reset", label: "系统重置", detail: "保留长按重启或重置配网等板端默认能力。" },
+  { id: "volume_adjust", label: "音量调节", detail: "旋钮旋转调节系统总音量，屏幕顶部短暂显示音量条。切页可继续用屏幕滑动。" },
+];
+
+// Runtime/component compatibility only. These actions remain understood when
+// reading an older board snapshot, but are intentionally absent from the P4 UI.
+const LEGACY_BUTTON_FUNCTION_OPTIONS = [
+  { id: "agent_enter", label: "继续 Agent", detail: "向当前 Agent 会话发送安全的继续指令。" },
+  { id: "miniapp_screen_tap", label: "触发当前负一屏点击", detail: "仅在负一屏打开时，触发当前组件已有的屏幕点击动作。" },
+  { id: "miniapp_screen_long_press", label: "触发当前负一屏长按", detail: "仅在负一屏打开时，触发当前组件已有的屏幕长按动作。" },
+  { id: "miniapp_action", label: "当前组件动作", detail: "由已安装组件确认后写入，动作 id 随组件 buttons.json 保存。" },
+  { id: "page_toggle", label: "切换屏幕", detail: "在宠物首页与当前负一屏之间切换。" },
+  { id: "page_main", label: "切换屏幕", detail: "兼容旧版的首页切换配置。" },
+  { id: "page_app", label: "切换屏幕", detail: "兼容旧版的负一屏切换配置。" },
+];
+
+export const BOARD_BUTTON_CONTROL_ROWS = [
+  { id: "encoder_button_short", label: "前方旋钮短按", event: "button.encoder.short_press", defaultAction: "system_page", actionOptions: ["system_page", "disabled"] },
+  { id: "encoder_button", label: "前方旋钮长按", event: "button.encoder.long_press", voiceTriggerId: "encoder_button.hold", defaultAction: "system_reset", actionOptions: ["voice_ptt", "system_reset", "disabled"] },
+  { id: "encoder_rotate", label: "前方旋钮旋转", event: "knob.rotate_cw / knob.rotate_ccw", defaultAction: "volume_adjust", actionOptions: ["volume_adjust"] },
+];
+
+const P4_CUSTOM_ACTION_OPTIONS = [
+  "agent_prompt",
+  "realtime_chat",
+  "session_previous",
+  "session_next",
+  "session_clear",
+  "dsh_interrupt",
+  "component_center",
+  "page_enter",
+  "page_back",
+  "disabled",
+];
+export const P4_BUTTON_CONTROL_ROWS = [
+  { id: "p4_sw1_short", controlId: "p4_sw1", label: "SW1 短按", event: "button.sw1.short_press", defaultAction: "page_enter", actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_sw1_long", controlId: "p4_sw1", label: "SW1 长按", event: "button.sw1.long_press", holdEvent: "button.sw1.hold", voiceTriggerId: P4_DEFAULT_VOICE_TRIGGER, defaultAction: "voice_ptt", voiceFallbackAction: "disabled", actionOptions: ["voice_ptt", ...P4_CUSTOM_ACTION_OPTIONS], supportsValue: true },
+  { id: "p4_sw2_short", controlId: "p4_sw2", label: "SW2 短按", event: "button.sw2.short_press", defaultAction: "component_center", defaultValue: P4_DEFAULT_PROMPT, actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_sw2_long", controlId: "p4_sw2", label: "SW2 长按", event: "button.sw2.long_press", holdEvent: "button.sw2.hold", voiceTriggerId: "sw2.hold", defaultAction: "realtime_chat", voiceFallbackAction: "disabled", actionOptions: ["voice_ptt", ...P4_CUSTOM_ACTION_OPTIONS], supportsValue: true },
+  { id: "p4_sw3_short", controlId: "p4_sw3", label: "SW3 短按", event: "button.sw3.short_press", defaultAction: "page_back", actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_sw3_long", controlId: "p4_sw3", label: "SW3 长按", event: "button.sw3.long_press", holdEvent: "button.sw3.hold", voiceTriggerId: "sw3.hold", defaultAction: "disabled", voiceFallbackAction: "disabled", actionOptions: ["voice_ptt", ...P4_CUSTOM_ACTION_OPTIONS], supportsValue: true },
+  { id: "p4_joystick_up", controlId: "p4_joystick", label: "摇杆向上", event: "joystick.up", defaultAction: "session_previous", actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_joystick_down", controlId: "p4_joystick", label: "摇杆向下", event: "joystick.down", defaultAction: "session_next", actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_encoder_ccw", controlId: "p4_joystick", label: "摇杆向左", event: "knob.rotate_ccw", defaultAction: "session_previous", actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_encoder_cw", controlId: "p4_joystick", label: "摇杆向右", event: "knob.rotate_cw", defaultAction: "session_next", actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_encoder_press", controlId: "p4_joystick", label: "摇杆中按短按", event: "button.encoder.short_press", defaultAction: "page_enter", actionOptions: P4_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+  { id: "p4_encoder_long", controlId: "p4_joystick", label: "摇杆中按长按", event: "button.encoder.long_press", holdEvent: "button.encoder.hold", voiceTriggerId: "encoder_button.hold", defaultAction: "disabled", voiceFallbackAction: "disabled", actionOptions: ["voice_ptt", ...P4_CUSTOM_ACTION_OPTIONS], supportsValue: true },
+];
+
+const S3_CUSTOM_ACTION_OPTIONS = [
+  "agent_enter",
+  "agent_prompt",
+  "realtime_chat",
+  "session_previous",
+  "session_next",
+  "session_clear",
+  "dsh_interrupt",
+  "component_center",
+  "page_enter",
+  "page_back",
+  "disabled",
+];
+export const S3_BUTTON_CONTROL_ROWS = [
+  ...[1, 2, 3, 4, 5].flatMap((key) => {
+    const shortDefaults = ["page_enter", "session_previous", "session_next", "page_back", "component_center"];
+    const longDefaults = ["voice_ptt", "disabled", "disabled", "disabled", "realtime_chat"];
+    const rows = [
+      { id: `s3_sw${key}_short`, controlId: `s3_sw${key}`, label: `按键 ${key} 短按`, event: `button.sw${key}.short_press`, defaultAction: shortDefaults[key - 1], actionOptions: S3_CUSTOM_ACTION_OPTIONS, supportsValue: true },
+      { id: `s3_sw${key}_long`, controlId: `s3_sw${key}`, label: `按键 ${key} 长按`, event: `button.sw${key}.long_press`, holdEvent: `button.sw${key}.hold`, voiceTriggerId: `sw${key}.hold`, defaultAction: longDefaults[key - 1], voiceFallbackAction: "disabled", actionOptions: ["voice_ptt", ...S3_CUSTOM_ACTION_OPTIONS], supportsValue: true },
+    ];
+    // K4 long hold is exclusively reserved for configurable deep sleep.
+    return key === 4
+      ? [rows[0], { ...rows[1], fixedPowerAction: true, actionOptions: ["disabled"] }]
+      : rows;
+  }),
+];
+
+const LEGACY_P4_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "disabled",
+  p4_sw2_short: "agent_enter",
+  p4_sw3_short: "agent_prompt",
+  p4_encoder_press: "disabled",
+  p4_encoder_long: "disabled",
+  p4_encoder_cw: "page_toggle",
+  p4_encoder_ccw: "page_toggle",
+};
+
+const P4_V2_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "agent_enter",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "agent_prompt",
+  p4_sw2_long: "disabled",
+  p4_sw3_short: "disabled",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "page_back",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+};
+
+const P4_V3_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "disabled",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "disabled",
+  p4_sw2_long: "disabled",
+  p4_sw3_short: "component_center",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "page_back",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+};
+
+const P4_V4_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "disabled",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "component_center",
+  p4_sw2_long: "disabled",
+  p4_sw3_short: "page_back",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "disabled",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+};
+
+const P4_V5_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "disabled",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "component_center",
+  p4_sw2_long: "disabled",
+  p4_sw3_short: "page_back",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "disabled",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+  p4_joystick_up: "disabled",
+  p4_joystick_down: "disabled",
+};
+
+const P4_V6_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "page_enter",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "component_center",
+  p4_sw2_long: "disabled",
+  p4_sw3_short: "page_back",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "disabled",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+  p4_joystick_up: "disabled",
+  p4_joystick_down: "disabled",
+};
+
+const P4_V7_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "page_back",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "component_center",
+  p4_sw2_long: "disabled",
+  p4_sw3_short: "page_enter",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "disabled",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+  p4_joystick_up: "disabled",
+  p4_joystick_down: "disabled",
+};
+
+const P4_V8_DEFAULT_BUTTON_ACTIONS = {
+  p4_sw1_short: "page_enter",
+  p4_sw1_long: "voice_ptt",
+  p4_sw2_short: "component_center",
+  p4_sw2_long: "disabled",
+  p4_sw3_short: "page_back",
+  p4_sw3_long: "disabled",
+  p4_encoder_press: "page_enter",
+  p4_encoder_long: "disabled",
+  p4_encoder_cw: "session_next",
+  p4_encoder_ccw: "session_previous",
+  p4_joystick_up: "disabled",
+  p4_joystick_down: "disabled",
+};
+
+const ALL_BUTTON_CONTROL_ROWS = [...BOARD_BUTTON_CONTROL_ROWS, ...P4_BUTTON_CONTROL_ROWS, ...S3_BUTTON_CONTROL_ROWS];
+
+function preferredVoiceRow(rows, buttonActions, trigger) {
+  return rows.find((row) => (
+    row.voiceTriggerId === trigger && buttonActions[row.id] === "voice_ptt"
+  )) || rows.find((row) => row.voiceTriggerId && buttonActions[row.id] === "voice_ptt");
+}
+
+export function buttonControlRowsForRuntime(runtime) {
+  const runtimeId = String(runtime || "").trim().toLowerCase();
+  if (runtimeId === P4_RUNTIME_ID) return P4_BUTTON_CONTROL_ROWS;
+  if (runtimeId === S3_RUNTIME_ID) return S3_BUTTON_CONTROL_ROWS;
+  if (["linux", "linux-board", "raspberry-pi", "raspberry", "radxa"].includes(runtimeId)) {
+    return BOARD_BUTTON_CONTROL_ROWS;
+  }
+  return [];
+}
+
+export function actionOptionById(actionId) {
+  return [...BUTTON_FUNCTION_OPTIONS, ...LEGACY_BUTTON_FUNCTION_OPTIONS]
+    .find((option) => option.id === actionId) || BUTTON_FUNCTION_OPTIONS[0];
+}
+
+export function clampButtonActionValue(value, maxBytes = 159) {
+  let output = "";
+  for (const char of String(value || "")) {
+    if (new TextEncoder().encode(output + char).length > maxBytes) break;
+    output += char;
+  }
+  return output;
+}
+
+export function buildBoardButtonConfigBindings(buttonActions = {}, buttonValues = {}, runtime = "", voiceEnabled = false) {
+  const controlRows = buttonControlRowsForRuntime(runtime);
+  const normalizedButtonActions = controlRows.reduce((next, row) => {
+    next[row.id] = row.actionOptions.includes(buttonActions[row.id])
+      ? buttonActions[row.id]
+      : row.defaultAction;
+    return next;
+  }, {});
+  const bindings = controlRows.flatMap((row) => {
+    const action = row.actionOptions.includes(normalizedButtonActions[row.id])
+      ? normalizedButtonActions[row.id]
+      : row.defaultAction;
+    const binding = { event: row.otaEvent || row.event, action };
+    if (action === "agent_prompt" || action === "miniapp_action") {
+      binding.value = clampButtonActionValue(buttonValues[row.id] || row.defaultValue || "");
+    }
+    if (!row.holdEvent) return [binding];
+    if (action === "voice_ptt") {
+      return [
+        { event: row.event, action: "disabled" },
+        { event: row.holdEvent, action: voiceEnabled ? "voice_ptt" : "disabled" },
+      ];
+    }
+    return [binding, { event: row.holdEvent, action: "disabled" }];
+  });
+  return bindings;
+}
+
+function createButtonConfigRequestId() {
+  return `button-config-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeVoiceConfig(value = {}) {
+  const triggerIds = new Set(VOICE_BUTTON_OPTIONS.map((o) => o.id));
+  const trigger = triggerIds.has(value.trigger) ? value.trigger : DEFAULT_VOICE_CONFIG.trigger;
+  const incoming = value.buttonActions && typeof value.buttonActions === "object" ? value.buttonActions : {};
+  const incomingValues = value.buttonValues && typeof value.buttonValues === "object" ? value.buttonValues : {};
+  const incomingLabels = value.buttonLabels && typeof value.buttonLabels === "object" ? value.buttonLabels : {};
+  const storedButtonModelVersion = Number(value.buttonModelVersion || 0);
+  const migrateLegacyP4Defaults = storedButtonModelVersion !== DEVICE_BUTTON_CONFIG_MODEL_VERSION
+    && Object.keys(incoming).some((key) => key.startsWith("p4_"));
+  const previousP4Defaults = storedButtonModelVersion === 8
+    ? P4_V8_DEFAULT_BUTTON_ACTIONS
+    : storedButtonModelVersion === 7
+    ? P4_V7_DEFAULT_BUTTON_ACTIONS
+    : storedButtonModelVersion === 6
+    ? P4_V6_DEFAULT_BUTTON_ACTIONS
+    : storedButtonModelVersion === 5
+    ? P4_V5_DEFAULT_BUTTON_ACTIONS
+    : storedButtonModelVersion === 4
+    ? P4_V4_DEFAULT_BUTTON_ACTIONS
+    : storedButtonModelVersion === 3
+    ? P4_V3_DEFAULT_BUTTON_ACTIONS
+    : storedButtonModelVersion === 2
+      ? P4_V2_DEFAULT_BUTTON_ACTIONS
+      : LEGACY_P4_DEFAULT_BUTTON_ACTIONS;
+  const resolvedButtonActions = ALL_BUTTON_CONTROL_ROWS.reduce((next, row) => {
+    const incomingAction = incoming[row.id] ?? (row.legacyId ? incoming[row.legacyId] : undefined);
+    const migratedAction = incomingAction === "page_main" || incomingAction === "page_app"
+      ? "page_toggle"
+      : incomingAction;
+    const actionAfterModelMigration = migrateLegacyP4Defaults
+      && previousP4Defaults[row.id] === migratedAction
+      ? undefined
+      : migratedAction;
+    next[row.id] = row.actionOptions.includes(actionAfterModelMigration)
+      ? actionAfterModelMigration
+      : DEFAULT_BUTTON_ACTIONS[row.id] || row.defaultAction;
+    return next;
+  }, {});
+  const buttonActions = resolvedButtonActions;
+  const buttonValues = ALL_BUTTON_CONTROL_ROWS.reduce((next, row) => {
+    const incomingValue = incomingValues[row.id] ?? (row.legacyId ? incomingValues[row.legacyId] : undefined);
+    if (row.supportsValue) next[row.id] = clampButtonActionValue(incomingValue || row.defaultValue || "");
+    return next;
+  }, {});
+  const buttonLabels = ALL_BUTTON_CONTROL_ROWS.reduce((next, row) => {
+    const label = incomingLabels[row.id] ?? (row.legacyId ? incomingLabels[row.legacyId] : undefined);
+    if (typeof label === "string" && label.trim()) next[row.id] = label.trim().slice(0, 32);
+    return next;
+  }, {});
+  return {
+    buttonModelVersion: DEVICE_BUTTON_CONFIG_MODEL_VERSION,
+    enabled: typeof value.enabled === "boolean"
+      ? value.enabled
+      : DEFAULT_VOICE_CONFIG.enabled,
+    trigger,
+    buttonActions,
+    buttonValues,
+    buttonLabels,
+  };
+}
+
+export function mergeBoardButtonConfig(currentConfig = {}, response = {}, runtime = "") {
+  const boardMigration = migrateP4V7ShippedBoardDefaults(response, runtime);
+  const migratedResponse = boardMigration.response;
+  const boardConfig = migratedResponse?.config && typeof migratedResponse.config === "object"
+    ? migratedResponse.config
+    : migratedResponse;
+  const bindings = Array.isArray(boardConfig?.bindings) ? boardConfig.bindings : [];
+  const bindingsByEvent = new Map(
+    bindings
+      .filter((binding) => binding && typeof binding === "object")
+      .map((binding) => [String(binding.event || "").trim(), binding]),
+  );
+  const current = normalizeVoiceConfig(currentConfig);
+  const buttonActions = { ...current.buttonActions };
+  const buttonValues = { ...current.buttonValues };
+  const buttonLabels = { ...current.buttonLabels };
+  const rows = buttonControlRowsForRuntime(runtime);
+
+  rows.forEach((row) => {
+    const primaryBinding = bindingsByEvent.get(row.otaEvent || row.event);
+    const holdBinding = row.holdEvent ? bindingsByEvent.get(row.holdEvent) : null;
+    const preserveDisabledVoiceMapping = row.voiceTriggerId
+      && primaryBinding?.action === "disabled"
+      && holdBinding?.action === "disabled"
+      && current.buttonActions[row.id] === "voice_ptt";
+    const boardBinding = holdBinding?.action === "voice_ptt"
+      ? holdBinding
+      : preserveDisabledVoiceMapping
+        ? { ...primaryBinding, action: "voice_ptt" }
+        : primaryBinding;
+    const boardAction = String(boardBinding?.action || "").trim();
+    const action = row.actionOptions.includes(boardAction) ? boardAction : row.defaultAction;
+    const value = clampButtonActionValue(boardBinding?.value || row.defaultValue || "");
+
+    buttonActions[row.id] = action;
+    if (row.supportsValue) buttonValues[row.id] = value;
+    if (action === "miniapp_action") {
+      const cachedValue = String(current.buttonValues[row.id] || "");
+      buttonLabels[row.id] = cachedValue === value && current.buttonLabels[row.id]
+        ? current.buttonLabels[row.id]
+        : value || "当前组件动作";
+    } else {
+      delete buttonLabels[row.id];
+    }
+  });
+
+  const runtimeId = String(runtime || "").trim().toLowerCase();
+  const p4VoiceBindingEnabled = rows.some((row) => (
+    row.voiceTriggerId
+    && row.holdEvent
+    && bindingsByEvent.get(row.holdEvent)?.action === "voice_ptt"
+  ));
+  const boardVoiceButton = String(
+    boardConfig?.voiceButton || boardConfig?.voice_button || "",
+  ).trim();
+  const voiceRow = preferredVoiceRow(
+    rows,
+    buttonActions,
+    boardVoiceButton || current.trigger,
+  );
+  const boardVoiceEnabled = typeof boardConfig?.voiceEnabled === "boolean"
+    ? boardConfig.voiceEnabled
+    : typeof boardConfig?.voice_enabled === "boolean"
+      ? boardConfig.voice_enabled
+      : runtimeId === P4_RUNTIME_ID
+        ? p4VoiceBindingEnabled
+        : Boolean(voiceRow);
+  const trigger = runtimeId === P4_RUNTIME_ID
+    ? voiceRow?.voiceTriggerId
+      || (P4_VOICE_BUTTON_OPTIONS.some((option) => option.id === boardVoiceButton)
+        ? boardVoiceButton
+        : P4_DEFAULT_VOICE_TRIGGER)
+    : VOICE_BUTTON_OPTIONS.some((option) => option.id === boardVoiceButton)
+    ? boardVoiceButton
+    : voiceRow?.voiceTriggerId || current.trigger;
+
+  const normalized = normalizeVoiceConfig({
+    ...current,
+    enabled: boardVoiceEnabled,
+    trigger,
+    buttonActions,
+    buttonValues,
+    buttonLabels,
+  });
+  return boardMigration.migrated
+    ? { ...normalized, boardDefaultsMigrated: true }
+    : normalized;
+}
+
+export function resolveButtonConfigForRuntime(value = {}, runtime = "") {
+  const config = normalizeVoiceConfig(value);
+  const rows = buttonControlRowsForRuntime(runtime);
+  const voiceRows = rows.filter((row) => row.voiceTriggerId);
+  if (voiceRows.length === 0) {
+    return {
+      config,
+      voiceButton: config.trigger,
+      voiceEnabled: config.enabled,
+    };
+  }
+  const voiceRow = preferredVoiceRow(
+    voiceRows,
+    config.buttonActions,
+    config.trigger,
+  );
+  return {
+    config,
+    voiceButton: voiceRow?.voiceTriggerId || P4_DEFAULT_VOICE_TRIGGER,
+    voiceEnabled: config.enabled && Boolean(voiceRow),
+  };
+}
+
+function comparableButtonConfig(value = {}, runtime = "") {
+  const resolved = resolveButtonConfigForRuntime(value, runtime);
+  return {
+    bindings: buildBoardButtonConfigBindings(
+      resolved.config.buttonActions,
+      resolved.config.buttonValues,
+      runtime,
+      resolved.voiceEnabled,
+    ),
+    voiceButton: resolved.voiceButton,
+    voiceEnabled: resolved.voiceEnabled,
+  };
+}
+
+export function boardButtonConfigMatchesClient(clientConfig = {}, response = {}, runtime = "") {
+  const boardConfig = mergeBoardButtonConfig(clientConfig, response, runtime);
+  if (boardConfig.boardDefaultsMigrated === true) return false;
+  return JSON.stringify(comparableButtonConfig(clientConfig, runtime))
+    === JSON.stringify(comparableButtonConfig(boardConfig, runtime));
+}
+
+export function applyVoiceEnabledForRuntime(value = {}, enabled = false, runtime = "") {
+  const next = normalizeVoiceConfig({ ...value, enabled: enabled === true });
+  if (String(runtime || "").trim().toLowerCase() === P4_RUNTIME_ID) {
+    const voiceRows = P4_BUTTON_CONTROL_ROWS.filter((row) => row.voiceTriggerId);
+    const selectedRow = voiceRows.find(
+      (row) => row.voiceTriggerId === next.trigger && next.buttonActions[row.id] === "voice_ptt",
+    ) || voiceRows.find((row) => row.voiceTriggerId === next.trigger)
+      || voiceRows.find((row) => next.buttonActions[row.id] === "voice_ptt")
+      || voiceRows[0];
+    if (enabled) {
+      next.buttonActions[selectedRow.id] = "voice_ptt";
+    }
+    next.trigger = selectedRow?.voiceTriggerId || P4_DEFAULT_VOICE_TRIGGER;
+    return next;
+  }
+  const voiceRows = buttonControlRowsForRuntime(runtime).filter((row) => row.voiceTriggerId);
+  if (voiceRows.length === 0) return next;
+
+  if (enabled) {
+    const selectedRow = voiceRows.find(
+      (row) => next.buttonActions[row.id] === "voice_ptt",
+    ) || voiceRows[0];
+    voiceRows.forEach((row) => {
+      next.buttonActions[row.id] = row.id === selectedRow.id
+        ? "voice_ptt"
+        : row.voiceFallbackAction || row.defaultAction || "disabled";
+    });
+    next.trigger = selectedRow.voiceTriggerId;
+    next.enabled = true;
+    return next;
+  }
+
+  voiceRows.forEach((row) => {
+    if (next.buttonActions[row.id] === "voice_ptt") {
+      next.buttonActions[row.id] = row.voiceFallbackAction || row.defaultAction || "disabled";
+    }
+  });
+  next.enabled = false;
+  return next;
+}
+
+export function applyVoiceTriggerForRuntime(value = {}, trigger = "", runtime = "") {
+  const next = normalizeVoiceConfig(value);
+  const voiceRows = buttonControlRowsForRuntime(runtime).filter((row) => row.voiceTriggerId);
+  const selectedRow = voiceRows.find((row) => row.voiceTriggerId === trigger)
+    || voiceRows.find((row) => row.voiceTriggerId === next.trigger)
+    || voiceRows[0];
+  if (!selectedRow) return next;
+
+  next.buttonActions[selectedRow.id] = "voice_ptt";
+  next.trigger = selectedRow.voiceTriggerId;
+  return next;
+}
+
+function loadVoiceConfigFromStorage() {
+  try {
+    const raw = localStorage.getItem(VOICE_CONFIG_STORAGE_KEY);
+    if (raw) return normalizeVoiceConfig(JSON.parse(raw));
+  } catch {}
+  return normalizeVoiceConfig({});
+}
+
+function saveVoiceConfigToStorage(next) {
+  try {
+    localStorage.setItem(VOICE_CONFIG_STORAGE_KEY, JSON.stringify(normalizeVoiceConfig(next)));
+  } catch {}
+}
+
+// Single place that OTAs a button config to the board. Used by both the device
+// dashboard's manual "下发" button and the component center's install flow, so
+// the invoke shape lives in exactly one spot.
+export async function dispatchBoardButtonConfig({ boardDeviceId, buttonActions, buttonValues, runtime, voiceButton, voiceEnabled }) {
+  const requestId = createButtonConfigRequestId();
+  return invoke("button_config_signal", {
+    boardDeviceId,
+    requestId,
+    bindings: buildBoardButtonConfigBindings(buttonActions, buttonValues, runtime, voiceEnabled),
+    voiceButton,
+    voiceEnabled,
+  });
+}
+
+// ---------- Voice-bus helpers ----------
+const BRIDGE_HTTP_PRIMARY_PORT = 23333;
+
+function normalizeText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function postMockButtonInject(payload) {
+  await ensureBridgeRuntime().catch(() => {});
+
+  const ports = [];
+  try {
+    const runtime = await invoke("load_bridge_runtime_status");
+    const runtimePort = Number(runtime?.port);
+    if (Number.isFinite(runtimePort) && runtimePort > 0) ports.push(runtimePort);
+  } catch {
+    // Older desktop runtimes do not expose this command; use the managed bridge port below.
+  }
+  ports.push(BRIDGE_HTTP_PRIMARY_PORT);
+
+  let lastError = null;
+  for (const port of [...new Set(ports)]) {
+    try {
+      const url = `http://127.0.0.1:${port}/mock-button-inject`;
+      const result = await invoke("http_request_text", {
+        url,
+        method: "POST",
+        headersJson: JSON.stringify({
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: JSON.stringify(payload),
+        timeoutMs: 120000,
+      });
+      const parsed = (() => {
+        try {
+          return JSON.parse(result?.body || "{}");
+        } catch {
+          return {};
+        }
+      })();
+      if (!result?.ok || parsed?.ok === false) {
+        throw new Error(parsed?.error || `mock-button-inject http ${result?.status || 0}`);
+      }
+      return parsed;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("mock-button-inject unavailable");
+}
+
+// ---------- Voice reducer (lean — only what VoiceAssistantPanel needs) ----------
+const VOICE_INITIAL_STATE = {
+  busStatus: null,
+  busStatusFingerprint: "",
+  voiceRuntime: null,
+  voiceRuntimeFingerprint: "",
+  audioBridgeEnabled: false,
+  audioBridgePending: false,
+  audioBridgeMessage: "",
+  audioBridgeLastResult: null,
+  audioBridgeDeferred: false,
+  audioBridgeActivity: "idle",
+  mockInjectInput: "",
+  mockInjectPending: false,
+  mockInjectMessage: "",
+  mockInjectReply: "",
+  mockInjectOk: null,
+};
+
+function voiceReducer(state, action) {
+  switch (action.type) {
+    case "set_bus_status": {
+      const fingerprint = JSON.stringify(action.value ?? null);
+      if (fingerprint === state.busStatusFingerprint) return state;
+      return { ...state, busStatus: action.value, busStatusFingerprint: fingerprint };
+    }
+    case "set_voice_runtime": {
+      const fingerprint = JSON.stringify(action.value ?? null);
+      if (fingerprint === state.voiceRuntimeFingerprint) return state;
+      return { ...state, voiceRuntime: action.value, voiceRuntimeFingerprint: fingerprint };
+    }
+    case "set_mock_inject_input": return { ...state, mockInjectInput: action.value || "" };
+    case "set_mock_inject_pending":
+      return {
+        ...state,
+        mockInjectPending: Boolean(action.value),
+        ...(action.value ? { mockInjectMessage: "", mockInjectReply: "", mockInjectOk: null } : {}),
+      };
+    case "set_mock_inject_result":
+      return {
+        ...state,
+        mockInjectPending: false,
+        mockInjectOk: action.ok,
+        mockInjectMessage: action.message || "",
+        mockInjectReply: action.reply || "",
+      };
+    case "set_audio_bridge_pending": return { ...state, audioBridgePending: action.value };
+    case "set_audio_bridge_state":
+      return {
+        ...state,
+        audioBridgeEnabled: action.enabled,
+        audioBridgePending: false,
+        audioBridgeLastResult: action.deferred ? null : action.ok ? "ok" : "error",
+        audioBridgeDeferred: action.deferred === true,
+        audioBridgeMessage: action.message || "",
+      };
+    case "set_audio_bridge_activity":
+      return {
+        ...state,
+        audioBridgeActivity: action.phase || "idle",
+        audioBridgeLastResult: action.ok === false
+          ? "error"
+          : action.phase === "end"
+            ? "ok"
+            : null,
+        audioBridgeMessage: action.message || "",
+      };
+    default: return state;
+  }
+}
+
+// ---------- Component ----------
+
+export default function DeviceDashboard({ active = true, binding, onUnbind, onOpenApiSettings, onOpenGallery }) {
+  const [editingPersona, setEditingPersona] = useState(null);
+  const locationController = useMemo(() => createSharedLocationController({ invoke }), []);
+  const locationState = useSyncExternalStore(locationController.subscribe, locationController.getSnapshot, locationController.getSnapshot);
+  useExitProtection(locationState.saving ? "位置设置正在保存" : locationState.dirty ? "位置设置有未保存的修改" : "");
+  useEffect(() => () => locationController.setActive(false), [locationController]);
+  // Native signaling now runs off the UI thread. Keep start/stop ordering
+  // across auto-rearm, button configuration and manual toggles.
+  const audioSignalQueueRef = useRef(Promise.resolve());
+  const sendAudioBridgeSignal = useCallback((input) => {
+    const pending = audioSignalQueueRef.current
+      .catch(() => {})
+      .then(() => invoke("audio_bridge_signal", input));
+    audioSignalQueueRef.current = pending.catch(() => {});
+    return pending;
+  }, []);
+  const {
+    usb,
+    s3Wifi,
+    deviceOnline,
+    onlineBoardDeviceId,
+    currentDisplay,
+    agentScan,
+    refreshAgents,
+    realtimeChat,
+    appearanceSync,
+    setUsageHelp,
+  } = useDeviceContext();
+  const selectedAgentId = currentDisplay.agentId;
+  const { push } = useToast();
+
+  const [voiceState, voiceDispatch] = useReducer(voiceReducer, VOICE_INITIAL_STATE);
+  const onDeviceVoiceAudioActivity = useCallback((activity) => {
+    voiceDispatch({ type: "set_audio_bridge_activity", ...activity });
+  }, []);
+  const { deviceVoiceFlow } = useDeviceVoiceRouter({
+    onAudioActivity: onDeviceVoiceAudioActivity,
+  });
+  const [voiceConfig, setVoiceConfig] = useState(loadVoiceConfigFromStorage);
+  const voiceConfigRef = useRef(voiceConfig);
+  // 实时对话键是否已绑到某个按键（提示文案用；真正的按键事件由 Rust 处理）
+  const realtimeChatKeyBound = Object.values(voiceConfig?.buttonActions || {}).includes("realtime_chat");
+  voiceConfigRef.current = voiceConfig;
+  const [voiceConfigDirty, setVoiceConfigDirty] = useState(false);
+  const usageHelp = useMemo(() => buildUsageHelp(buttonControlRowsForRuntime(usb.runtime), voiceConfig.buttonActions, voiceConfig.enabled, voiceConfigDirty), [usb.runtime, voiceConfig, voiceConfigDirty]);
+  useEffect(() => { setUsageHelp(usageHelp); }, [usageHelp, setUsageHelp]);
+  const [voiceConfigOtaState, setVoiceConfigOtaState] = useState({ pending: false, tone: "", message: "" });
+  const [buttonConfigHydratedFor, setButtonConfigHydratedFor] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [firmwareModalOpen, setFirmwareModalOpen] = useState(false);
+  const [diagnosticsModalOpen, setDiagnosticsModalOpen] = useState(false);
+  const [firmwareTargetBoardDeviceId, setFirmwareTargetBoardDeviceId] = useState("");
+  const [diagnosticsTargetBoardDeviceId, setDiagnosticsTargetBoardDeviceId] = useState("");
+  const [dismissedP4Sessions, setDismissedP4Sessions] = useState({});
+  const buttonConfigRevisionRef = useRef(0);
+  const buttonConfigQueryTokenRef = useRef(0);
+  const isP4Runtime = String(usb.runtime || "").toLowerCase() === P4_RUNTIME_ID;
+  const isS3Runtime = String(usb.runtime || "").toLowerCase() === S3_RUNTIME_ID;
+  const showS3WifiPanel = isS3Runtime || !usb.connected
+    || (Array.isArray(s3Wifi?.pairings) && s3Wifi.pairings.length > 0)
+    || (Array.isArray(s3Wifi?.candidates) && s3Wifi.candidates.length > 0);
+  const canSyncAppearance = isP4Runtime
+    || (isS3Runtime && ["s3-avatar-rgb565-v1", "s3-avatar-rgb565-v2", "s3-avatar-rgb565-v3"].includes(usb.capabilities?.s3Avatar));
+  const isNativeUsbRuntime = isP4Runtime || isS3Runtime;
+  const hasKnownRuntime = buttonControlRowsForRuntime(usb.runtime).length > 0;
+  const voiceTarget = voiceRuntimeTarget(usb, selectedAgentId);
+  const voiceTargetKeyRef = useRef(voiceTarget.key);
+  // Update during render: an old Promise may settle before effect cleanup.
+  voiceTargetKeyRef.current = voiceTarget.key;
+  const nativeVoiceRows = buttonControlRowsForRuntime(usb.runtime);
+  const p4VoiceRow = isNativeUsbRuntime
+    ? preferredVoiceRow(nativeVoiceRows, voiceConfig.buttonActions, voiceConfig.trigger)
+    : null;
+  const runtimeVoiceEnabled = isNativeUsbRuntime
+    ? voiceConfig.enabled && Boolean(p4VoiceRow)
+    : voiceConfig.enabled;
+  const activeVoiceTriggerId = isNativeUsbRuntime
+    ? p4VoiceRow?.voiceTriggerId || P4_DEFAULT_VOICE_TRIGGER
+    : voiceConfig.trigger;
+  const runtimeVoiceConfig = useMemo(
+    () => isNativeUsbRuntime
+      ? { ...voiceConfig, enabled: runtimeVoiceEnabled, trigger: activeVoiceTriggerId }
+      : voiceConfig,
+    [activeVoiceTriggerId, isNativeUsbRuntime, runtimeVoiceEnabled, voiceConfig],
+  );
+  const runtimeVoiceTriggerOptions = isP4Runtime
+    ? P4_VOICE_BUTTON_OPTIONS
+    : isS3Runtime
+      ? S3_VOICE_BUTTON_OPTIONS
+    : VOICE_BUTTON_OPTIONS.filter((option) => option.id === "encoder_button.hold");
+  const selectedVoiceTrigger = runtimeVoiceTriggerOptions.find((option) => option.id === activeVoiceTriggerId)
+    || runtimeVoiceTriggerOptions[0];
+  const buttonConfigTargetBoardDeviceId = usb.connected
+    ? (usb.boardDeviceId || onlineBoardDeviceId || binding?.boardDeviceId || "")
+    : "";
+  const agentScanSummary = agentScan?.error
+    ? "扫描失败，请重试"
+    : agentScan?.pending
+      ? "正在读取本机 CLI"
+      : agentScan?.scannedAt
+        ? `已检测到 ${agentScan.detectedCount} 个 Agent，设备端仅显示当前跟随的 Agent 状态，对话结束后设备气泡保留显示 60 秒`
+        : "读取本机已安装的 CLI Agent";
+
+  const handleRefreshAgents = useCallback(async () => {
+    try {
+      const agents = await refreshAgents();
+      const detectedCount = agents.filter((agent) => agent.detected).length;
+      push({
+        tone: "success",
+        title: "Agent 扫描完成",
+        message: `检测到 ${detectedCount} 个本机 Agent。`,
+        ttl: 3200,
+      });
+    } catch (error) {
+      push({
+        tone: "error",
+        title: "Agent 扫描失败",
+        message: error?.message || String(error),
+      });
+    }
+  }, [push, refreshAgents]);
+
+  // When another surface (e.g. the component center installing a widget) writes
+  // a new button config to the shared store and fires a "storage" event, reload
+  // it so this panel reflects the applied preset instead of going stale.
+  useEffect(() => {
+    const onStorage = (event) => {
+      if (!event.key || event.key === VOICE_CONFIG_STORAGE_KEY) {
+        buttonConfigRevisionRef.current += 1;
+        setVoiceConfig(loadVoiceConfigFromStorage());
+        setVoiceConfigDirty(false);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const refreshButtonConfigFromBoard = useCallback(async () => {
+    if (!usb.connected || !hasKnownRuntime || !buttonConfigTargetBoardDeviceId) return null;
+    const queryToken = ++buttonConfigQueryTokenRef.current;
+    const startingRevision = buttonConfigRevisionRef.current;
+    const startingScope = voiceTarget.key;
+    const queryIsCurrent = () => queryToken === buttonConfigQueryTokenRef.current
+      && startingRevision === buttonConfigRevisionRef.current
+      && startingScope === voiceTargetKeyRef.current;
+    setVoiceConfigOtaState({
+      pending: true,
+      tone: "",
+      message: "正在校验设备与客户端按钮配置...",
+    });
+    const clientConfig = normalizeVoiceConfig(voiceConfigRef.current);
+    const syncClientConfig = async () => {
+      if (!queryIsCurrent()) return null;
+      const resolved = resolveButtonConfigForRuntime(clientConfig, usb.runtime);
+      return dispatchBoardButtonConfig({
+        boardDeviceId: buttonConfigTargetBoardDeviceId,
+        buttonActions: resolved.config.buttonActions,
+        buttonValues: resolved.config.buttonValues,
+        runtime: usb.runtime,
+        voiceButton: resolved.voiceButton,
+        voiceEnabled: resolved.voiceEnabled,
+      });
+    };
+    try {
+      const boardConfig = await invoke("usb_get_button_config", {
+        expectedBoardDeviceId: buttonConfigTargetBoardDeviceId,
+      });
+      if (!queryIsCurrent()) return null;
+      if (boardButtonConfigMatchesClient(clientConfig, boardConfig, usb.runtime)) {
+        setVoiceConfigDirty(false);
+        setVoiceConfigOtaState({
+          pending: false,
+          tone: "success",
+          message: "设备按钮配置与客户端一致。",
+        });
+        return boardConfig;
+      }
+
+      setVoiceConfigDirty(true);
+      setVoiceConfigOtaState({
+        pending: true,
+        tone: "",
+        message: "检测到设备与客户端按钮配置不一致，正在用客户端配置覆盖设备...",
+      });
+      try {
+        await syncClientConfig();
+        if (queryIsCurrent()) {
+          setVoiceConfigDirty(false);
+          setVoiceConfigOtaState({
+            pending: false,
+            tone: "success",
+            message: "检测到配置差异，已使用客户端按钮配置覆盖设备。",
+          });
+        }
+      } catch (syncError) {
+        if (queryIsCurrent()) {
+          setVoiceConfigDirty(true);
+          setVoiceConfigOtaState({
+            pending: false,
+            tone: "warning",
+            message: `检测到配置差异，但客户端配置自动覆盖失败，请点击“同步到设备”：${syncError}`,
+          });
+        }
+      }
+      return boardConfig;
+    } catch (error) {
+      if (!queryIsCurrent()) return null;
+      setVoiceConfigDirty(true);
+      setVoiceConfigOtaState({
+        pending: false,
+        tone: "warning",
+        message: "暂未读到设备按键配置，已停止自动写入。请确认设备就绪后手动同步。",
+      });
+      return null;
+    } finally {
+      if (queryIsCurrent()) {
+        setButtonConfigHydratedFor(buttonConfigTargetBoardDeviceId);
+      }
+    }
+  }, [
+    buttonConfigTargetBoardDeviceId,
+    hasKnownRuntime,
+    usb.connected,
+    usb.runtime,
+    voiceTarget.key,
+    usb.connectionId,
+    usb.bootId,
+  ]);
+
+  useEffect(() => {
+    if (!usb.connected || !hasKnownRuntime || !buttonConfigTargetBoardDeviceId) {
+      buttonConfigQueryTokenRef.current += 1;
+      setButtonConfigHydratedFor("");
+      return undefined;
+    }
+    setButtonConfigHydratedFor("");
+    refreshButtonConfigFromBoard();
+    return () => {
+      buttonConfigQueryTokenRef.current += 1;
+    };
+  }, [
+    buttonConfigTargetBoardDeviceId,
+    hasKnownRuntime,
+    refreshButtonConfigFromBoard,
+    usb.connected,
+  ]);
+
+  // Auto-open the device-guide modal the first time the user lands here.
+  useEffect(() => {
+    if (!active || !binding || !hasKnownRuntime) return;
+    if (shouldAutoOpenOnboarding(ONBOARDING_PAGE_IDS.DEVICE)) setGuideOpen(true);
+  }, [active, binding, hasKnownRuntime]);
+
+  const p4TargetBoardDeviceId = isNativeUsbRuntime
+    ? (usb.boardDeviceId || onlineBoardDeviceId || binding?.boardDeviceId || "")
+    : "";
+
+  const mergeDismissedP4Sessions = useCallback((dismissed) => {
+    setDismissedP4Sessions((current) => ({ ...current, ...dismissed }));
+  }, []);
+  const sessionFeed = useAgentSessionFeed({
+    agentId: selectedAgentId,
+    displayEnabled: true,
+    dismissedSessions: dismissedP4Sessions,
+  });
+  const p4SessionSync = useP4SessionSync({
+    enabled: isP4Runtime,
+    boardDeviceId: p4TargetBoardDeviceId,
+    agentId: selectedAgentId,
+    usbConnected: usb.connected,
+    usbConnectionId: usb.connectionId,
+    usbBootId: usb.bootId || usb.capabilities?.debugBootId || "",
+    displayEnabled: true,
+    sessions: sessionFeed.sessions,
+    routingSessions: sessionFeed.routingSessions,
+    sessionsLoaded: sessionFeed.loaded,
+    dismissedSessions: dismissedP4Sessions,
+    onDismissSessions: mergeDismissedP4Sessions,
+    formatSessionOption: formatVoiceSessionOption,
+    push,
+  });
+  const selectedAgentBusSessions = sessionFeed.sessions;
+  const selectedAgentRoutingSessions = sessionFeed.routingSessions;
+  const selectedAgentSessionsLoaded = sessionFeed.loaded;
+
+  // Poll voice-bus status.
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const ctl = new AbortController();
+    const run = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        let body;
+        try {
+          body = await fetchAgentBusStatus(ctl.signal);
+        } catch {
+          if (cancelled || ctl.signal.aborted) return;
+          const runtime = await ensureBridgeRuntime();
+          if (!runtime?.running) {
+            throw new Error(runtime?.message || "本地 Bridge 未启动");
+          }
+          body = await fetchAgentBusStatus(ctl.signal);
+        }
+        if (!cancelled) voiceDispatch({ type: "set_bus_status", value: body });
+      } catch {
+        if (!cancelled) {
+          voiceDispatch({ type: "set_bus_status", value: { ok: false, agents: [] } });
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+    run();
+    const id = setInterval(run, 5000);
+    return () => {
+      cancelled = true;
+      ctl.abort();
+      clearInterval(id);
+    };
+  }, []);
+
+  // Poll voice-runtime. Only after exact USB handshake; never infer legacy from !P4.
+  useEffect(() => {
+    voiceDispatch({type:"set_voice_runtime",value:{mode:"waiting_device",running:false,
+      message:"正在等待设备握手确认",agentId:"",targetKey:voiceTarget.key}});
+    voiceDispatch({type:"set_audio_bridge_pending",value:false});
+    const poller=createVoiceRuntimePoller({target:voiceTarget,invoke,
+      isCurrent:()=>voiceTargetKeyRef.current===voiceTarget.key,
+      publish:value=>voiceDispatch({type:"set_voice_runtime",value})});
+    poller.poll();
+    const id=setInterval(()=>poller.poll(),5000);
+    return ()=>{poller.cancel();clearInterval(id);};
+  }, [voiceTarget.key]);
+
+  // ---------- Button config update + OTA dispatch ----------
+  const updateVoiceConfig = useCallback((patch) => {
+    buttonConfigRevisionRef.current += 1;
+    setVoiceConfig((prev) => {
+      let next = normalizeVoiceConfig({ ...prev, ...patch });
+      if (isNativeUsbRuntime) {
+        const runtimeRows = buttonControlRowsForRuntime(usb.runtime);
+        const nextVoiceRow = preferredVoiceRow(
+          runtimeRows,
+          next.buttonActions,
+          next.trigger,
+        );
+        next = {
+          ...next,
+          enabled: next.enabled && Boolean(nextVoiceRow),
+          trigger: nextVoiceRow?.voiceTriggerId || P4_DEFAULT_VOICE_TRIGGER,
+        };
+      }
+      saveVoiceConfigToStorage(next);
+      setVoiceConfigDirty(true);
+      setVoiceConfigOtaState({ pending: false, tone: "warning", message: "修改已保存在电脑上，点击「同步到设备」后生效。" });
+      return next;
+    });
+  }, [isNativeUsbRuntime, usb.runtime]);
+
+  const applyVoiceConfigOverUsb = useCallback(async (configOverride = null) => {
+    const requestedRevision = buttonConfigRevisionRef.current;
+    const requestedScope = voiceTarget.key;
+    const isCurrent = () => requestedRevision === buttonConfigRevisionRef.current
+      && requestedScope === voiceTargetKeyRef.current;
+    const requestedConfigInput = configOverride?.buttonActions
+      ? normalizeVoiceConfig(configOverride)
+      : voiceConfig;
+    const requested = resolveButtonConfigForRuntime(requestedConfigInput, usb.runtime);
+    const requestedConfig = requested.config;
+    const requestedRuntimeVoiceEnabled = requested.voiceEnabled;
+    const requestedVoiceTriggerId = requested.voiceButton;
+    if (!usb.connected) {
+      setVoiceConfigOtaState({ pending: false, tone: "warning", message: "请先通过 USB 连接设备，再同步按键配置。" });
+      return;
+    }
+    const targetBoardDeviceId = onlineBoardDeviceId || usb.boardDeviceId || binding.boardDeviceId;
+    if (!targetBoardDeviceId) {
+      setVoiceConfigOtaState({ pending: false, tone: "error", message: "未找到可用的板子 ID，请先完成设备绑定。" });
+      return;
+    }
+    setVoiceConfigOtaState({ pending: true, tone: "", message: "正在同步按键配置，请保持设备连接…" });
+    try {
+      const ack = await dispatchBoardButtonConfig({
+        boardDeviceId: targetBoardDeviceId,
+        buttonActions: requestedConfig.buttonActions,
+        buttonValues: requestedConfig.buttonValues,
+        runtime: usb.runtime,
+        voiceButton: requestedVoiceTriggerId,
+        voiceEnabled: requestedRuntimeVoiceEnabled,
+      });
+      if (!isCurrent()) return;
+      let voiceSetupWarning = "";
+      try {
+        if (isNativeUsbRuntime && requestedRuntimeVoiceEnabled) {
+          setVoiceConfigOtaState({ pending: true, tone: "", message: "按钮配置已写入，正在准备设备麦克风识别通道..." });
+          const bridgeRuntime = await ensureBridgeRuntime();
+          if (!bridgeRuntime?.running) {
+            throw new Error(bridgeRuntime?.message || "本地 Bridge 未启动");
+          }
+          if (!isCurrent()) return;
+          const voiceRuntime = await invoke("ensure_device_voice_runtime");
+          if (!isCurrent()) return;
+          if (!voiceRuntime?.running) {
+            throw new Error(voiceRuntime?.message || "设备录音识别通道未就绪");
+          }
+          const audio = await sendAudioBridgeSignal({
+            boardDeviceId: targetBoardDeviceId,
+            expectedConnectionId: usb.connectionId,
+            action: "start",
+            voiceButton: requestedVoiceTriggerId,
+          });
+          if (!isCurrent()) return;
+          if (!audio?.usbSent) throw new Error(audio?.usbError || "设备麦克风信令未通过 USB 送达");
+          voiceDispatch({ type: "set_audio_bridge_state", enabled: true, ok: true, message: "设备麦克风已通过 USB 接入" });
+        } else if (voiceState.audioBridgeEnabled) {
+          await sendAudioBridgeSignal({
+            boardDeviceId: targetBoardDeviceId,
+            expectedConnectionId: usb.connectionId,
+            action: "stop",
+            voiceButton: requestedVoiceTriggerId,
+          });
+          if (!isCurrent()) return;
+          voiceDispatch({ type: "set_audio_bridge_state", enabled: false, ok: true, message: "设备麦克风监听已停止" });
+        }
+      } catch (voiceError) {
+        if (!isCurrent()) return;
+        voiceSetupWarning = String(voiceError);
+        voiceDispatch({
+          type: "set_audio_bridge_state",
+          enabled: requestedRuntimeVoiceEnabled ? false : voiceState.audioBridgeEnabled,
+          ok: false,
+          message: `设备麦克风通道未就绪: ${voiceSetupWarning}`,
+        });
+      }
+      if (!isCurrent()) return;
+      saveVoiceConfigToStorage(requestedConfig);
+      setVoiceConfig(requestedConfig);
+      const bindingCount = Number(ack?.bindingCount ?? ack?.ack?.bindingCount ?? 0);
+      setVoiceConfigDirty(false);
+      setVoiceConfigOtaState({
+        pending: false,
+        tone: voiceSetupWarning ? "warning" : "success",
+        message: voiceSetupWarning
+          ? `按钮配置已写入板端（${Number.isFinite(bindingCount) ? bindingCount : 0} 项）；语音通道未就绪：${voiceSetupWarning}`
+          : "按钮配置已同步到设备，可以按新的设置操作了。",
+      });
+    } catch (err) {
+      if (!isCurrent()) return;
+      setVoiceConfigOtaState({ pending: false, tone: "error", message: `按钮配置下发失败: ${err}` });
+    }
+  }, [voiceTarget.key, binding.boardDeviceId, isNativeUsbRuntime, onlineBoardDeviceId, sendAudioBridgeSignal, usb.boardDeviceId, usb.connected, usb.connectionId, usb.runtime, voiceConfig, voiceState.audioBridgeEnabled]);
+
+  const updateVoiceTrigger = useCallback(async (trigger) => {
+    buttonConfigRevisionRef.current += 1;
+    const next = applyVoiceTriggerForRuntime(voiceConfig, trigger, usb.runtime);
+    saveVoiceConfigToStorage(next);
+    setVoiceConfig(next);
+    setVoiceConfigDirty(true);
+    setVoiceConfigOtaState({
+      pending: false,
+      tone: usb.connected ? "" : "warning",
+      message: usb.connected
+        ? "正在切换语音输入的长按按钮并同步到设备..."
+        : "语音输入按键已保存到客户端；连接 USB 后同步到板端才会生效。",
+    });
+    if (usb.connected) {
+      await applyVoiceConfigOverUsb(next);
+    }
+  }, [applyVoiceConfigOverUsb, usb.connected, usb.runtime, voiceConfig]);
+
+  const updateVoiceEnabled = useCallback(async (enabled) => {
+    buttonConfigRevisionRef.current += 1;
+    const next = applyVoiceEnabledForRuntime(voiceConfig, enabled, usb.runtime);
+    saveVoiceConfigToStorage(next);
+    setVoiceConfig(next);
+    setVoiceConfigDirty(true);
+    setVoiceConfigOtaState({
+      pending: false,
+      tone: usb.connected ? "" : "warning",
+      message: usb.connected
+        ? enabled
+          ? "正在启用语音输入并同步到设备..."
+          : "正在关闭语音输入并同步到设备..."
+        : "已保存到客户端；连接 USB 后同步到板端才会生效。",
+    });
+    if (usb.connected) {
+      await applyVoiceConfigOverUsb(next);
+    }
+  }, [applyVoiceConfigOverUsb, usb.connected, usb.runtime, voiceConfig]);
+
+  useEffect(() => {
+    if (
+      !isNativeUsbRuntime
+      || !usb.connected
+      || !p4TargetBoardDeviceId
+      || buttonConfigHydratedFor !== p4TargetBoardDeviceId
+      || !runtimeVoiceEnabled
+    ) return undefined;
+    let cancelled = false;
+
+    const rearmDeviceVoice = async () => {
+      try {
+        const bridgeRuntime = await ensureBridgeRuntime();
+        if (cancelled) return;
+        if (bridgeRuntime?.running === false) {
+          throw new Error(bridgeRuntime?.message || "本地 Bridge 未启动");
+        }
+        const voiceRuntime = await invoke("ensure_device_voice_runtime", {
+          input: { interactive: false },
+        });
+        if (cancelled) return;
+        if (voiceRuntime?.deferred) {
+          if (!cancelled) {
+            voiceDispatch({
+              type: "set_audio_bridge_state",
+              enabled: false,
+              ok: null,
+              deferred: true,
+              message: voiceRuntime?.message || "打开语音输入区域后将继续恢复设备麦克风",
+            });
+          }
+          return;
+        }
+        if (!voiceRuntime?.running) {
+          throw new Error(voiceRuntime?.message || "设备录音识别通道未就绪");
+        }
+        const audio = await sendAudioBridgeSignal({
+          boardDeviceId: p4TargetBoardDeviceId,
+          expectedConnectionId: usb.connectionId,
+          action: "start",
+          voiceButton: activeVoiceTriggerId,
+        });
+        if (!audio?.usbSent) throw new Error(audio?.usbError || "设备麦克风信令未通过 USB 送达");
+        if (!cancelled) {
+          voiceDispatch({ type: "set_audio_bridge_state", enabled: true, ok: true, message: "设备麦克风已自动恢复" });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          voiceDispatch({ type: "set_audio_bridge_state", enabled: false, ok: false, message: `设备麦克风自动恢复失败: ${error}` });
+        }
+      }
+    };
+
+    rearmDeviceVoice();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeVoiceTriggerId,
+    buttonConfigHydratedFor,
+    isNativeUsbRuntime,
+    p4TargetBoardDeviceId,
+    runtimeVoiceEnabled,
+    sendAudioBridgeSignal,
+    usb.connected,
+    usb.connectionId,
+  ]);
+
+  // ---------- Audio bridge toggle ----------
+  const toggleAudioBridge = useCallback(async (action) => {
+    const requestedEnabled = action === "start";
+    const targetKey=voiceTarget.key;
+    const current=()=>voiceTargetKeyRef.current===targetKey;
+    if(voiceTarget.kind==="waiting")return;
+    const targetBoardDeviceId = usb.boardDeviceId;
+    voiceDispatch({ type: "set_audio_bridge_pending", value: true });
+    try {
+      if (!targetBoardDeviceId) throw new Error("未找到可用的板子 ID，请先完成设备绑定。");
+      if (action === "start") {
+        const bridgeRuntime = await ensureBridgeRuntime();
+        if (!current()) return;
+        if (bridgeRuntime?.running === false) throw new Error(bridgeRuntime?.message || "本地 Bridge 未启动，无法下发板子音频信令。");
+        const voiceRuntime = await invoke(
+          isNativeUsbRuntime ? "ensure_device_voice_runtime" : "ensure_voice_runtime",
+        );
+        if (!current()) return;
+        if (!voiceRuntime?.running) throw new Error(voiceRuntime?.message || "voice-service 未启动，无法接入板子音频。");
+      }
+      if (!current()) return;
+      const res = await sendAudioBridgeSignal({
+        boardDeviceId: targetBoardDeviceId,
+        expectedConnectionId: usb.connectionId,
+        action,
+        voiceButton: activeVoiceTriggerId,
+      });
+      if (!current()) return;
+      const transports = res?.usbSent ? "USB" : "";
+      voiceDispatch({ type: "set_audio_bridge_state", enabled: requestedEnabled, ok: true, message: `已通过 ${transports || "USB"} 下发到板端` });
+    } catch (err) {
+      if (!current()) return;
+      voiceDispatch({ type: "set_audio_bridge_state", enabled: !requestedEnabled, ok: false, message: `${action === "start" ? "启动" : "关闭"}板子音频失败: ${err}` });
+    }
+  }, [voiceTarget.key, activeVoiceTriggerId, binding.boardDeviceId, isNativeUsbRuntime, onlineBoardDeviceId, sendAudioBridgeSignal, usb.boardDeviceId, usb.connectionId]);
+
+  const resumeDeviceVoiceAfterCredentialAccess = useCallback(() => {
+    if (!isNativeUsbRuntime || !runtimeVoiceEnabled || !usb.connected || !p4TargetBoardDeviceId) {
+      return undefined;
+    }
+    return toggleAudioBridge("start");
+  }, [
+    isNativeUsbRuntime,
+    p4TargetBoardDeviceId,
+    runtimeVoiceEnabled,
+    toggleAudioBridge,
+    usb.connected,
+  ]);
+
+  // This controller stays mounted across tabs; VoiceAssistantPanel does not.
+  // Read native readiness again after a successful save, then restore the
+  // transport and replace any old "please configure" recovery error.
+  useEffect(() => subscribeAsrCredentialUpdates(window, resumeDeviceVoiceAfterCredentialAccess),
+    [resumeDeviceVoiceAfterCredentialAccess]);
+
+  const sendMockButtonInject = useCallback(() => {
+    const text = (voiceState.mockInjectInput || "").trim();
+    if (!text || !selectedAgentId) return;
+    voiceDispatch({ type: "set_mock_inject_pending", value: true });
+    const request = selectedAgentId === "workbuddy"
+      ? invoke("write_workbuddy_voice_test_draft", { text })
+      : postMockButtonInject({
+      agentId: selectedAgentId,
+      sessionId: p4SessionSync.sessionId || "auto",
+      text,
+    });
+    request
+      .then((response) => {
+        const sessionId =
+          response?.sessionId
+          || response?.done?.sessionId
+          || response?.ready?.sessionId
+          || p4SessionSync.sessionId
+          || "auto";
+        voiceDispatch({
+          type: "set_mock_inject_result",
+          ok: true,
+          message: selectedAgentId === "workbuddy"
+            ? "已追加到 WorkBuddy 草稿，未发送；请核对文字是否一致、有无截图蒙层。"
+            : `已发送到当前会话 · ${sessionId}`,
+          reply: response?.tokenPreview || "",
+        });
+      })
+      .catch((err) => {
+        voiceDispatch({
+          type: "set_mock_inject_result",
+          ok: false,
+          message: err?.message || String(err),
+          reply: "",
+        });
+      });
+  }, [p4SessionSync.sessionId, selectedAgentId, voiceState.mockInjectInput]);
+
+  const [appearanceObservationBusy, setAppearanceObservationBusy] = useState(false);
+  const appearanceObservationOwnerRef = useRef(null);
+  const appearanceObservationUsbRef = useRef(usb);
+  appearanceObservationUsbRef.current = usb;
+  useEffect(() => () => { appearanceObservationOwnerRef.current = null; }, []);
+  const onReconcileAppearance = useCallback(async () => {
+    if (appearanceObservationOwnerRef.current) return;
+    const current = appearanceObservationUsbRef.current;
+    if (!current?.connected || !current.boardDeviceId || appearanceSync?.pending) return;
+    const owner = { boardDeviceId: current.boardDeviceId, connectionId: current.connectionId,
+      bootId: current.bootId || current.capabilities?.debugBootId || "" };
+    appearanceObservationOwnerRef.current = owner;
+    setAppearanceObservationBusy(true);
+    const isCurrent = () => appearanceObservationOwnerRef.current === owner
+      && appearanceObservationUsbRef.current.connected === true
+      && appearanceObservationUsbRef.current.boardDeviceId === owner.boardDeviceId
+      && appearanceObservationUsbRef.current.connectionId === owner.connectionId
+      && (appearanceObservationUsbRef.current.bootId || appearanceObservationUsbRef.current.capabilities?.debugBootId || "") === owner.bootId;
+    try {
+      const result = await observeAppearanceFromMenu({ invoke, boardDeviceId: owner.boardDeviceId, isCurrent });
+      if (isCurrent()) push({ tone: "info", ...result });
+    } catch (error) {
+      if (appearanceObservationOwnerRef.current === owner) push({ tone: "warning", title: "形象状态尚未确认", message: appearanceObservationError(error) });
+    } finally {
+      if (appearanceObservationOwnerRef.current === owner) {
+        appearanceObservationOwnerRef.current = null;
+        setAppearanceObservationBusy(false);
+      }
+    }
+  }, [appearanceSync?.pending, push]);
+
+  // ---------- Action-menu callbacks ----------
+  const onSendTest = useCallback(() => {
+    const sendPromise = usb.connected
+      ? invoke("usb_send_speech", { text: "hello from EasyCoding Deck" }).then(() => ({ ok: true })).catch((err) => ({ ok: false, error: String(err) }))
+      : Promise.resolve({ ok: false, error: "USB 未连接" });
+    sendPromise.then((res) => {
+      push(res.ok
+        ? { tone: "success", title: "测试消息已发送" }
+        : { tone: "error", title: "测试消息发送失败", message: res.error });
+    });
+  }, [push, usb.connected]);
+
+  const onCopyDesktopId = useCallback(() => {
+    try {
+      navigator.clipboard?.writeText(binding.desktopDeviceId || "");
+      push({ tone: "success", title: "已复制桌面设备 ID" });
+    } catch {
+      push({ tone: "error", title: "复制失败" });
+    }
+  }, [binding.desktopDeviceId, push]);
+
+  const onUnbindClick = useCallback(() => {
+    invoke("remove_device_binding", { boardDeviceId: binding.boardDeviceId })
+      .then(() => onUnbind?.())
+      .catch((err) => push({ tone: "error", title: "解绑失败", message: String(err) }));
+  }, [binding.boardDeviceId, onUnbind, push]);
+
+  /* 应急：负一屏物理按键失灵切不回主屏时，远程把设备 .screen-page 写成 main */
+  const onDeviceReturnHome = useCallback(async () => {
+    try {
+      await invoke("usb_set_screen_page", { page: "main" });
+      push({ tone: "success", title: "已请求设备切回主屏" });
+    } catch (err) {
+      push({ tone: "error", title: "切回主屏失败", message: typeof err === "string" ? err : String(err) });
+    }
+  }, [push]);
+
+  /* 应急：客户端 UI 形象 vs 设备实际脱节时，绕过 desktop-pet-assignment.js 的
+   * appearanceChanged 缓存判断，直接重新推送当前 active appearance 到设备 */
+  const onForceSyncAppearance = useCallback(async () => {
+    const appearanceId =
+      (typeof window !== "undefined" && window.localStorage
+        ? window.localStorage.getItem(ACTIVE_APPEARANCE_KEY)
+        : null) || BUILTIN_TERRIER_APPEARANCE_ID;
+    try {
+      const result = await invoke("usb_sync_appearance", {
+        appearanceId,
+        boardDeviceId: p4TargetBoardDeviceId,
+      });
+      if (result?.ok) {
+        push({
+          tone: "success",
+          title: `已强制重推形象到设备（${appearanceId}）`,
+          message: `${result.fileCount || 0} 个素材，${result.byteCount || 0} bytes`,
+        });
+      } else {
+        push({ tone: "error", title: "强制同步失败", message: result?.error || "未知错误" });
+      }
+    } catch (err) {
+      push({ tone: "error", title: "强制同步失败", message: typeof err === "string" ? err : String(err) });
+    }
+  }, [p4TargetBoardDeviceId, push]);
+
+  const onInputConfigReset = useCallback(async () => {
+    buttonConfigRevisionRef.current += 1;
+    await refreshButtonConfigFromBoard();
+  }, [refreshButtonConfigFromBoard]);
+
+  // Session, voice, and device synchronization must keep running across tabs,
+  // but the dashboard's large control tree and media previews do not.
+  return (
+    <>
+    {active && <PageShell
+      title="桌搭控制台"
+      help={hasKnownRuntime ? () => setGuideOpen(true) : undefined}
+      actions={
+        <DashboardActionsMenu
+          onSendTest={onSendTest}
+          onCopyDesktopId={onCopyDesktopId}
+          onUnbind={onUnbindClick}
+          onDeviceReturnHome={isP4Runtime ? onDeviceReturnHome : undefined}
+          onForceSyncAppearance={canSyncAppearance ? onForceSyncAppearance : undefined}
+          onReconcileAppearance={isP4Runtime ? onReconcileAppearance : undefined}
+          canReconcileAppearance={isP4Runtime && usb.connected === true && Boolean(usb.boardDeviceId) && !appearanceSync?.pending && !appearanceObservationBusy}
+          onUpdateFirmware={usb.connected
+            && usb.capabilities?.firmwareUpdate?.supported === true
+            && (usb.runtime === P4_RUNTIME_ID || usb.runtime === S3_RUNTIME_ID)
+            ? () => {
+              setFirmwareTargetBoardDeviceId(usb.boardDeviceId || "");
+              setFirmwareModalOpen(true);
+            }
+            : undefined}
+          onDiagnostics={usb.connected && (usb.runtime === P4_RUNTIME_ID || usb.capabilities?.diagnostics)
+            ? () => {
+              setDiagnosticsTargetBoardDeviceId(usb.boardDeviceId || "");
+              setDiagnosticsModalOpen(true);
+            }
+            : undefined}
+        />
+      }
+    >
+      <Card>
+        <DeviceStatusBar />
+      </Card>
+
+      {isS3Runtime && <Card title="T-Keyboard Voice 硬件状态" subtitle="五屏、五键、音频、电源与扩展接口">
+        <S3HardwarePanel usb={usb} />
+      </Card>}
+
+      {showS3WifiPanel && <Card title="S3 Wi-Fi 传输" subtitle="USB 配网、WSS 认证、mDNS 发现与手动 endpoint">
+        <S3WifiPanel />
+      </Card>}
+
+      {realtimeChat?.error && !isRecoveringAsr(realtimeChat) && <div role="alert" className="message-banner message-banner--error">
+        实时对话失败：{realtimeChat.error}。详情与诊断日志见下方「实时对话」。
+      </div>}
+
+      <Card
+        title="Agent与形象"
+        subtitle={agentScanSummary}
+        actions={(
+          <Button
+            variant="ghost"
+            size="small"
+            loading={agentScan?.pending === true}
+            loadingLabel="扫描中…"
+            onClick={handleRefreshAgents}
+            aria-label="重新扫描本机 CLI Agent"
+          >
+            <RefreshCw size={14} />
+            重新扫描
+          </Button>
+        )}
+      >
+        <ChannelMatrixCard />
+      </Card>
+
+      <Card>
+        <BoardButtonPanel
+          selectedAgentId={selectedAgentId}
+          voiceConfig={runtimeVoiceConfig}
+          buttonActions={voiceConfig.buttonActions}
+          buttonValues={voiceConfig.buttonValues}
+          buttonLabels={voiceConfig.buttonLabels}
+          runtime={usb.runtime}
+          voiceConfigDirty={voiceConfigDirty}
+          voiceConfigOtaState={voiceConfigOtaState}
+          usbConnected={Boolean(usb.connected)}
+          boardDeviceId={usb.boardDeviceId || ""}
+          selectedTrigger={selectedVoiceTrigger}
+          onVoiceConfigChange={updateVoiceConfig}
+          onApplyVoiceConfig={applyVoiceConfigOverUsb}
+        />
+      </Card>
+
+      <Card.Collapsible
+        title="语音输入"
+        summary={buildVoiceSummary(runtimeVoiceConfig, selectedVoiceTrigger)}
+        defaultOpen
+      >
+        <VoiceAssistantPanel
+          state={{
+            ...voiceState,
+            deviceVoiceFlow,
+            busSessions: selectedAgentBusSessions,
+            busRoutingSessions: selectedAgentRoutingSessions,
+            busSessionsLoaded: selectedAgentSessionsLoaded,
+            busSessionId: p4SessionSync.sessionId,
+            selectedAgentId,
+            deviceOnline,
+            voiceRuntimeTargetKey: voiceTarget.key,
+            voiceRuntimeTargetReady: voiceTarget.kind !== "waiting",
+          }}
+          dispatch={voiceDispatch}
+          toggleAudioBridge={toggleAudioBridge}
+          sendMockButtonInject={sendMockButtonInject}
+          voiceConfig={runtimeVoiceConfig}
+          selectedTrigger={selectedVoiceTrigger}
+          voiceTriggerOptions={runtimeVoiceTriggerOptions}
+          onVoiceConfigChange={updateVoiceConfig}
+          onVoiceTriggerChange={updateVoiceTrigger}
+          onVoiceEnabledChange={updateVoiceEnabled}
+          onOpenApiSettings={onOpenApiSettings}
+        />
+      </Card.Collapsible>
+
+      {(usb.capabilities?.audioMasterVolume||usb.capabilities?.audioTestPlayback) && <Card title="设备音频">
+        <DeviceVolumePanel usb={usb} active={active} />
+      </Card>}
+      <Card>
+        <SharedLocationPanel active={active} controller={locationController} />
+      </Card>
+
+      <Card.Collapsible
+        title="实时对话"
+        summary={realtimeChat?.active ? `进行中 · ${realtimeStateLabel(realtimeChat.state)}` : "按设备上的「实时对话」键和当前形象聊天"}
+        defaultOpen
+      >
+        <RealtimeChatPanel keyBound={realtimeChatKeyBound} onOpenApiSettings={onOpenApiSettings} onOpenGallery={onOpenGallery} onOpenPersona={() => setEditingPersona(currentDisplay?.appearance)} />
+      </Card.Collapsible>
+
+      <DeviceGuideModal
+        isOpen={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        runtime={usb.runtime}
+      />
+      <FirmwareUpdateModal
+        open={firmwareModalOpen}
+        onClose={() => {
+          setFirmwareModalOpen(false);
+          setFirmwareTargetBoardDeviceId("");
+        }}
+        currentFirmware={usb.firmware}
+        expectedBoardDeviceId={firmwareTargetBoardDeviceId}
+      />
+      <DeviceDiagnosticsModal
+        open={diagnosticsModalOpen}
+        onClose={() => {
+          setDiagnosticsModalOpen(false);
+          setDiagnosticsTargetBoardDeviceId("");
+        }}
+        onInputConfigReset={onInputConfigReset}
+        expectedBoardDeviceId={diagnosticsTargetBoardDeviceId}
+        runtime={usb.runtime}
+      />
+    </PageShell>}
+    {editingPersona && <div hidden={!active}><PersonaVoiceModal
+      appearance={editingPersona} onClose={() => setEditingPersona(null)}
+      onOpenApiSettings={onOpenApiSettings}
+      onSaved={() => { setEditingPersona(null); push({ tone: "success", title: "人设与声音已保存", message: "正在对话时，将从下一轮回复开始使用新设置。" }); }}
+    /></div>}
+    </>
+  );
+}

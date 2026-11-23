@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "id": "codex-ikun",
+  "type": "builtin",
+  "name": "鸡哥ikun",
+  "description": "A chubby duck-like knight pet with a silver mop haircut, big cartoon eyes, orange beak and cheeks, and a brown shell-like backpack, simplified into Codex digital pet style.",
+  "provider": "codex",
+  "model": "",
+  "base_url": "",
+  "thinking_model": "",
+  "persona": {
+    "source": "codex-import",
+    "pet_id": "ikun"
+  },
+  "source_image": "custom-appearances/codex-ikun/source.webp",
+  "source_mime": "image/webp",
+  "source_preview": "custom-appearances/codex-ikun/preview.png",
+  "source_preview_mime": "image/png",
+  "families": [
+    {
+      "family": "idle.default",
+      "ok": true,
+      "prompt": "codex row 0",
+      "videoPath": "custom-appearances/codex-ikun/videos/idle.default.mp4",
+      "taskId": "codex-row-0",
+      "videoUrl": ""
+    },
+    {
+      "family": "touch.right",
+      "ok": true,
+      "prompt": "codex row 1",
+      "videoPath": "custom-appearances/codex-ikun/videos/touch.right.mp4",
+      "taskId": "codex-row-1",
+      "videoUrl": ""
+    },
+    {
+      "family": "touch.left",
+      "ok": true,
+      "prompt": "codex row 2",
+      "videoPath": "custom-appearances/codex-ikun/videos/touch.left.mp4",
+      "taskId": "codex-row-2",
+      "videoUrl": ""
+    },
+    {
+      "family": "welcome",
+      "ok": true,
+      "prompt": "codex row 3",
+      "videoPath": "custom-appearances/codex-ikun/videos/welcome.mp4",
+      "taskId": "codex-row-3",
+      "videoUrl": ""
+    },
+    {
+      "family": "idle.jumping",
+      "ok": true,
+      "prompt": "codex row 4",
+      "videoPath": "custom-appearances/codex-ikun/videos/idle.jumping.mp4",
+      "taskId": "codex-row-4",
+      "videoUrl": ""
+    },
+    {
+      "family": "error",
+      "ok": true,
+      "prompt": "codex row 5",
+      "videoPath": "custom-appearances/codex-ikun/videos/error.mp4",
+      "taskId": "codex-row-5",
+      "videoUrl": ""
+    },
+    {
+      "family": "waiting_user",
+      "ok": true,
+      "prompt": "codex row 6",
+      "videoPath": "custom-appearances/codex-ikun/videos/waiting_user.mp4",
+      "taskId": "codex-row-6",
+      "videoUrl": ""
+    },
+    {
+      "family": "working",
+      "ok": true,
+      "prompt": "codex row 7",
+      "videoPath": "custom-appearances/codex-ikun/videos/working.mp4",
+      "taskId": "codex-row-7",
+      "videoUrl": ""
+    },
+    {
+      "family": "done",
+      "ok": true,
+      "prompt": "codex row 8",
+      "videoPath": "custom-appearances/codex-ikun/videos/done.mp4",
+      "taskId": "codex-row-8",
+      "videoUrl": ""
+    }
+  ],
+  "created_at": "2026-11-12T02:48:19.092Z"
+}

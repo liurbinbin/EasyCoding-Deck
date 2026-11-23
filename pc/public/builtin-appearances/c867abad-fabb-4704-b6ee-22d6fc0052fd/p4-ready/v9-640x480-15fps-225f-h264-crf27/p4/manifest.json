@@ -1,0 +1,129 @@
+{
+  "format": "p4-h264-v1",
+  "systemCues": true,
+  "packId": "ed7950085388a493b04ec69faa1f51bbe2bcbdc926490aa163636895f4c300b2",
+  "codec": "h264",
+  "container": "annex-b",
+  "width": 640,
+  "height": 480,
+  "fps": 15,
+  "families": [
+    {
+      "family": "welcome",
+      "path": "p4/families/sha256-727ee2f6feb379b3fd994eba.h264",
+      "frames": 29,
+      "streamBytes": 26163,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 1920
+    },
+    {
+      "family": "idle.playing",
+      "path": "p4/families/sha256-05ee693027a03d738166ff14.h264",
+      "frames": 47,
+      "streamBytes": 22128,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 3120
+    },
+    {
+      "family": "idle.wandering",
+      "path": "p4/families/sha256-79f9b8b76586a959ca118413.h264",
+      "frames": 36,
+      "streamBytes": 16498,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 2400
+    },
+    {
+      "family": "working",
+      "path": "p4/families/sha256-275c8dda88e62d1c397f2671.h264",
+      "frames": 12,
+      "streamBytes": 12035,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 800
+    },
+    {
+      "family": "waiting_user",
+      "path": "p4/families/sha256-103b26bcf90081f0b98400ba.h264",
+      "frames": 47,
+      "streamBytes": 9619,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 3120
+    },
+    {
+      "family": "done",
+      "path": "p4/families/sha256-4c4299bdb316620e071b3ef7.h264",
+      "frames": 49,
+      "streamBytes": 18007,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 3260
+    },
+    {
+      "family": "error",
+      "path": "p4/families/sha256-5b6813709556734d80c69460.h264",
+      "frames": 14,
+      "streamBytes": 12386,
+      "fps": 14,
+      "frameDurationMs": 69,
+      "durationMs": 960
+    },
+    {
+      "family": "touch.lick",
+      "path": "p4/families/sha256-71b480a3a7a654898814c9db.h264",
+      "frames": 22,
+      "streamBytes": 67692,
+      "fps": 15,
+      "frameDurationMs": 66,
+      "durationMs": 1440
+    },
+    {
+      "family": "touch.what",
+      "path": "p4/families/sha256-2295bf1c5bfd4d817e9f5de2.h264",
+      "frames": 45,
+      "streamBytes": 14894,
+      "fps": 15,
+      "frameDurationMs": 68,
+      "durationMs": 3020
+    },
+    {
+      "family": "idle.default",
+      "path": "p4/families/sha256-d1173aa5e188bc90621b5642.h264",
+      "frames": 43,
+      "streamBytes": 22127,
+      "fps": 15,
+      "frameDurationMs": 67,
+      "durationMs": 2880
+    },
+    {
+      "family": "idle.jumping",
+      "path": "p4/families/sha256-87ab4922573c5f80c9682c4c.h264",
+      "frames": 34,
+      "streamBytes": 7323,
+      "fps": 15,
+      "frameDurationMs": 66,
+      "durationMs": 2240
+    },
+    {
+      "family": "touch.right",
+      "path": "p4/families/sha256-0f4c36ef23111b72144347ab.h264",
+      "frames": 40,
+      "streamBytes": 29624,
+      "fps": 15,
+      "frameDurationMs": 66,
+      "durationMs": 2640
+    },
+    {
+      "family": "touch.left",
+      "path": "p4/families/sha256-75f91b325f7f31fdbba4a934.h264",
+      "frames": 40,
+      "streamBytes": 46585,
+      "fps": 15,
+      "frameDurationMs": 66,
+      "durationMs": 2640
+    }
+  ]
+}

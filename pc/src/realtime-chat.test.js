@@ -1,0 +1,178 @@
+/**
+ * [Input] Desktop sources (DeviceContext, DeviceDashboard, RealtimeChatPanel, ApiSettings,
+ *         PersonaVoiceModal), the Tauri Rust modules, 保留的桌面协议契约。
+ * [Output] Cross-module contract coverage for 实时对话: the board key round-trips through Rust to
+ *          the UI, the persona/voice start payload, credential storage, the streamed playback and
+ *          conversation topics, the HUD/animation override, and the docs that declare them.
+ * [Pos] test node in ref/src
+ * [Sync] If this file changes, update `ref/src/.folder.md`.
+ */
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { buildRealtimeChatStartInput, voiceSpecFor, previewTextFor } from "./lib/persona-voice.js";
+
+const srcDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(srcDir, "..", "..");
+const read = (relative) => readFileSync(join(repoRoot, relative), "utf8");
+
+test("device realtime status labels omit question marks and unsupported ellipsis", () => {
+  const rtc=read("pc/src-tauri/src/realtime_chat.rs");
+  const labels=[...rtc.matchAll(/hud\([^;\n]*,\s*"([^"\n]*)"\);/g)].map(match=>match[1]);
+  for (const expected of ["准备中", "正在处理", "正在联网查询", "刚才没说成，请再说一遍"]) {
+    assert.ok(labels.includes(expected), expected);
+  }
+  for (const label of labels) assert.doesNotMatch(label, /[?？…]/);
+});
+
+test("reply audio is cancelled only after ASR verifies two characters or explicit stop", () => {
+  const rtc = read("pc/src-tauri/src/realtime_chat.rs");
+  const verified = rtc.slice(rtc.indexOf("async fn verify_barge_in_with"), rtc.indexOf("/// Capture remains polled"));
+  assert.match(verified, /if !has_barge_in_text\(&text\) \{ continue; \}/);
+  assert.doesNotMatch(verified, /PlayerCmd::Flush|tts\.interrupt/);
+  assert.match(verified, /BARGE_CONFIRM_TIMEOUT/);
+  assert.match(verified, /BARGE_CONFIRM_MAX_FRAMES/);
+  assert.match(verified, /barge_candidate/);
+  assert.match(verified, /barge_rejected/);
+  assert.match(verified, /barge_confirmed/);
+  assert.match(rtc, /\(Some\('停'\), None\)/);
+  assert.match(rtc, /asr_generation = speech\.recognizer\.generation\(\);\s+recognizer = Some\(speech\.recognizer\); asr_rx = Some\(\(asr_generation, speech\.events\)\)/);
+  assert.match(rtc, /if !speech.reply_completed \{/);
+  assert.match(rtc, /recognizer_terminal = speech.terminal/);
+  assert.match(rtc, /if !recognizer_terminal \{/);
+  const stop = rtc.slice(rtc.indexOf("if is_explicit_stop(&text)"), rtc.indexOf("turns += 1;"));
+  assert.match(stop, /voice_stop/);
+  assert.match(stop, /continue;/);
+  assert.doesNotMatch(stop, /answer_turn|tts\.speak/);
+  assert.doesNotMatch(rtc, /没听清，请再说一次/);
+});
+
+test("start payload carries the assembled system prompt, greeting and camelCase voice spec", () => {
+  const input = buildRealtimeChatStartInput(
+    { id: "a1", name: "Torti", description: "一只乌龟", personaVoice: undefined },
+    "p4-board",
+  );
+  assert.equal(input.boardDeviceId, "p4-board");
+  assert.equal(input.appearanceId, "a1");
+  assert.equal(input.displayName, "Torti");
+  assert.match(input.systemPrompt, /你是「Torti」/);
+  assert.ok(input.greeting.length > 0);
+  assert.deepEqual(Object.keys(input.voice).sort(), ["cloneSpeakerId", "speaker", "speed", "volume"]);
+  assert.equal(voiceSpecFor({ voice: { clone_speaker_id: " S_x " } }).cloneSpeakerId, "S_x");
+  assert.equal(previewTextFor({ greeting: "汪！" }), "汪！");
+});
+
+test("Rust owns the conversation loop and exposes the commands the UI calls", () => {
+  const lib = read("pc/src-tauri/src/lib.rs");
+  const rtc = read("pc/src-tauri/src/realtime_chat.rs");
+  assert.match(lib, /realtime_chat::route_device_audio\(&topic, &payload\)/);
+  assert.match(lib, /realtime_chat::handle_input_event\(emitter, &payload\)/);
+  assert.match(lib, /\| realtime_chat::ACTION_ID/);
+  for (const command of ["realtime_chat_start", "realtime_chat_stop", "realtime_chat_status", "persona_voice_preview", "load_voice_chat_settings", "save_voice_chat_settings"]) {
+    assert.match(lib, new RegExp(`realtime_chat::${command},`), `command ${command} registered`);
+  }
+  assert.match(rtc, /pub const ACTION_ID: &str = "realtime_chat";/);
+  assert.match(rtc, /"audio\/conversation"[\s\S]*"halfDuplex": !duplex/);
+  assert.match(rtc, /listen_during_reply/);
+  assert.match(rtc, /"audioAec","audioVad","audioFullDuplex"/);
+  assert.match(rtc, /epoch\.fetch_add\(1, Ordering::SeqCst\)/);
+  assert.match(rtc, /"audio\/play_begin"/);
+  assert.match(rtc, /"audio\/play_chunk"/);
+  assert.match(rtc, /"audio\/play_end"/);
+  assert.match(rtc, /"ui\/conversation"/);
+  assert.match(rtc, /IDLE_TIMEOUT: Duration = Duration::from_secs\(60\)/);
+  assert.match(rtc, /REQUEST_EVENT: &str = "realtime-chat-request"/);
+  const tts = read("pc/src-tauri/src/doubao_tts.rs");
+  assert.match(tts, /wss:\/\/openspeech\.bytedance\.com\/api\/v3\/tts\/bidirection/);
+  assert.match(tts, /VOICE_CLONE_RESOURCE_ID: &str = "seed-icl-2\.0"/);
+});
+
+test("DeviceContext resolves the board key into the current appearance and mirrors Rust state", () => {
+  const context = read("pc/src/shell/DeviceContext.jsx");
+  assert.match(context, /listen\("realtime-chat-request"/);
+  assert.match(context, /listen\("realtime-chat-state"/);
+  assert.match(context, /invoke\("realtime_chat_start", \{ input: buildRealtimeChatStartInput\(appearance, boardDeviceId\) \}\)/);
+  assert.match(context, /还没有设置人设与声音/);
+  assert.match(context, /startRealtimeChat,\n\s+stopRealtimeChat,/);
+});
+
+test("dashboard offers the realtime_chat action and the conversation card", () => {
+  const dashboard = read("pc/src/DeviceDashboard.jsx");
+  assert.match(dashboard, /id: "realtime_chat", label: "实时对话"/);
+  assert.match(dashboard, /const P4_CUSTOM_ACTION_OPTIONS = \[\n\s+"agent_prompt",\n\s+"realtime_chat",/);
+  assert.match(dashboard, /<RealtimeChatPanel keyBound=\{realtimeChatKeyBound\}[^\n]*onOpenPersona=/);
+  const panel = read("pc/src/dashboard/RealtimeChatPanel.jsx");
+  assert.match(panel, /开始聊天/);
+  assert.match(panel, /<UsageHelp/);
+  assert.match(read("pc/src/UsageHelp.jsx"), /等它说完再说/);
+  assert.doesNotMatch(panel, /半双工|选一个短按绑定/);
+});
+
+test("SW2 long press defaults to one realtime toggle and respects explicit overrides", () => {
+  const dashboard = read("pc/src/DeviceDashboard.jsx");
+  const rowSource = dashboard.match(/\{ id: "p4_sw2_long",[^\n]+/)[0].replace(/,$/, "");
+  const row = new Function("P4_CUSTOM_ACTION_OPTIONS", `return (${rowSource});`)(["realtime_chat", "disabled"]);
+  const builderSource = dashboard.slice(dashboard.indexOf("export function buildBoardButtonConfigBindings"), dashboard.indexOf("function createButtonConfigRequestId"));
+  const build = new Function("buttonControlRowsForRuntime", "clampButtonActionValue", `${builderSource.replace("export function", "function")}; return buildBoardButtonConfigBindings;`)(() => [row], (v) => v);
+  assert.deepEqual(build({}, {}, "esp-p4"), [
+    { event: "button.sw2.long_press", action: "realtime_chat" },
+    { event: "button.sw2.hold", action: "disabled" },
+  ]);
+  assert.deepEqual(build({ p4_sw2_long: "disabled" }, {}, "esp-p4"), [
+    { event: "button.sw2.long_press", action: "disabled" },
+    { event: "button.sw2.hold", action: "disabled" },
+  ]);
+  assert.deepEqual(build({ p4_sw2_long: "voice_ptt" }, {}, "esp-p4", true), [
+    { event: "button.sw2.long_press", action: "disabled" },
+    { event: "button.sw2.hold", action: "voice_ptt" },
+  ]);
+});
+
+test("API settings persist the LLM and Doubao TTS credentials and the modal previews through Rust", () => {
+  const settings = read("pc/src/ApiSettings.jsx");
+  assert.match(settings, /invoke\("load_voice_chat_settings"\)/);
+  assert.match(settings, /invoke\("save_voice_chat_settings"/);
+  assert.match(settings, /语音识别与合成/);
+  assert.match(settings, /语音 API Key（识别与合成共用）/);
+  assert.doesNotMatch(settings, /api-settings-tts-key|api-settings-tts-resource|api-settings-asr-resource/);
+  assert.match(settings, /对话大模型/);
+  assert.match(settings, /LLM_PRESETS/);
+  assert.match(read("pc/src/lib/api-configuration.js"), /id: "deepseek"[\s\S]*id: "doubao"[\s\S]*id: "mimo"/);
+  const modal = read("pc/src/PersonaVoiceModal.jsx");
+  assert.match(modal, /invoke\("persona_voice_preview"/);
+  assert.match(modal, /status\?\.ttsConfigured === true/);
+});
+
+test("saved persona refreshes the device target and the active session without switching appearances", () => {
+  const store = read("pc/src/lib/appearance-store.js");
+  const context = read("pc/src/shell/DeviceContext.jsx");
+  const rtc = read("pc/src-tauri/src/realtime_chat.rs");
+  assert.match(store, /emitPersonaVoiceUpdated\(appearanceId, saved\)/);
+  assert.match(store, /invoke\("realtime_chat_update_persona"/);
+  assert.match(context, /addEventListener\(PERSONA_VOICE_UPDATED_EVENT/);
+  assert.match(context, /await getAppearance\(selectedAppearance.id\)/);
+  assert.match(rtc, /pending_persona: Mutex<Option<RealtimeChatStartInput>>/);
+  assert.match(rtc, /status.appearance_id != input.appearance_id/);
+  assert.match(rtc, /current.system_prompt = next.system_prompt/);
+});
+
+test("failure status survives fast exit, cancellation bypasses audio queues, device logs are forwarded", () => {
+  const rtc = read("pc/src-tauri/src/realtime_chat.rs");
+  assert.match(rtc, /stop_notify\.notify_one\(\)/);
+  assert.match(rtc, /session\.stop_notify\.notified\(\)/);
+  assert.doesNotMatch(rtc, /\*slot = None/);
+  assert.match(rtc, /topic == "audio\/diagnostic"/);
+  assert.match(read("pc/src-tauri/src/realtime_chat_log.rs"), /MAX_BYTES: u64 = 1024 \* 1024/);
+});
+
+test("live captions are isolated from Agent state and follow PCM playback", () => {
+  const rtc = read("pc/src-tauri/src/realtime_chat.rs");
+  assert.match(rtc, /pointer\("\/features\/conversationSubtitles"\)/);
+  assert.match(rtc, /"offsetBytes":sent_bytes \+ pending.len\(\) as u64/);
+  assert.match(rtc, /"role":"user","final":final_text/);
+  assert.match(rtc, /Some\("playback_completed"\)/);
+  assert.match(rtc, /completed_playback\.lock\(\).map\(\|id\| \*id == turn_id\)/);
+});

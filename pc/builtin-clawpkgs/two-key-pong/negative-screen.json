@@ -1,0 +1,16 @@
+{
+  "dashboard": {
+    "title": "双键接球",
+    "eyebrow": "经典电子乒乓",
+    "headline": "准备接球",
+    "metricLabel": "连续接球",
+    "metricValue": "0",
+    "metricUnit": "开始接球",
+    "footer": "摇杆左右移动 · 主键开始/重开 · 全局键退出",
+    "visualStyle": "clean",
+    "visualPalette": "ocean",
+    "visualLayout": "scoreboard",
+    "visualSprite": "trophy",
+    "badge": "0"
+  }
+}

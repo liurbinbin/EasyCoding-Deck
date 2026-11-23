@@ -1,0 +1,13 @@
+{
+  "board": "T-Keyboard Voice V0.3",
+  "runtime": "esp32-s3-tkeyboard",
+  "artifact": "firmware.factory.bin",
+  "imageType": "merged-factory",
+  "descriptorVersion": "ee57070",
+  "projectName": "arduino-lib-builder",
+  "sizeBytes": 1432992,
+  "sha256": "4728c485259a104b0f0f8dab0ba862d63054f8c9e9952cb0c6d9ce28dee84aaf",
+  "applicationOffset": "0x10000",
+  "partitionTable": "default_16MB.csv",
+  "source": "firmware-s3/.pio/build/t_keyboard_voice/firmware.factory.bin"
+}
