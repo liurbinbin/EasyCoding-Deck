@@ -5,7 +5,7 @@
  * two-page joystick routing, cursor lifecycle delivery, serialized USB follow switching, Codex-visible and
  * MiMoCode current-caret voice delivery, client-authoritative ACK-gated board
  * configuration, ID-deeplink-confirmed macOS Session recovery, and stale bridge/USB
- * guards, accurate client-or-CLI discovery copy, SW1-confirm/SW3-back and joystick-up/down defaults and migration,
+ * guards, accurate client-or-CLI discovery copy, S3 five-key defaults and joystick-up/down defaults and migration,
  * default-enabled first-run voice input with explicit opt-out persistence,
  * immediate saved-ASR voice rearming, and exact-board appearance recovery.
  * [Pos] test node in pc/src
@@ -357,6 +357,23 @@ test("T-Keyboard Voice exposes five keys, reserves K4 hold, and has no encoder",
   assert.match(rows, /actionOptions: \["disabled"\]/);
   assert.doesNotMatch(rows, /knob\.rotate_ccw|knob\.rotate_cw|s3_encoder/);
   assert.match(dashboard, /if \(runtimeId === S3_RUNTIME_ID\) return S3_BUTTON_CONTROL_ROWS/);
+});
+
+test("T-Keyboard Voice uses the requested five-key desktop defaults", () => {
+  const dashboard = readSource("DeviceDashboard.jsx");
+  const rows = dashboard.slice(
+    dashboard.indexOf("export const S3_BUTTON_CONTROL_ROWS"),
+    dashboard.indexOf("const LEGACY_P4_DEFAULT_BUTTON_ACTIONS"),
+  );
+
+  assert.match(
+    rows,
+    /const shortDefaults = \["component_center", "page_enter", "disabled", "page_back", "component_center"\]/,
+  );
+  assert.match(
+    rows,
+    /const longDefaults = \["voice_ptt", "disabled", "disabled", "disabled", "realtime_chat"\]/,
+  );
 });
 
 test("device audio controls render for negotiated volume or WAV playback", () => {

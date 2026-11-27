@@ -9,6 +9,16 @@
 
 **EasyCoding Deck** pairs a desktop client with ESP32-S3 firmware for **LILYGO T-Keyboard Voice V0.3**. The computer handles Agent integration, speech recognition, conversation and speech synthesis. The device handles five displays, keys, audio capture and playback, status LEDs and power management.
 
+## Five-screen animation preview (simulation)
+
+![LILYGO T-Keyboard Voice keyboard simulation: screen 1 plays the selected working.mp4 from the first frame; the other screens show confirm, messages, cancel, and Agent status](assets/readme-startup.gif)
+
+Screen 1 loops the **working.mp4 animation** from the “你好世界” avatar, starting immediately without dark-screen or initialization frames. The other screens show confirm, messages, cancel, and Agent status. The GIF shows only the keyboard, not the desktop application.
+
+> **Simulation only — not a hardware recording or boot-time benchmark.** The preview assumes a synchronized avatar and desktop-default key bindings. The actual boot sequence is intentionally omitted; this is not an unconfigured, freshly flashed device.
+
+[Animation source, demo code, and regeneration](assets/README.md)
+
 ## Features
 
 | Feature | How it works |
@@ -22,7 +32,9 @@
 | USB / Wi-Fi | USB CDC for wired operation and initial provisioning; paired LAN WSS for status, input, audio and avatar transfers. |
 | Power and diagnostics | Check battery, charging and connection status, adjust volume, and configure power-off or deep sleep. |
 
-Status, draft insertion, confirmed sending and tool approval are separate capabilities. See the [Agent integration matrix](pc/docs/agent-integration-audit.md). Device features are enabled from the actual capabilities in its `hello` response.
+**Currently integrated Agent tools:** ChatGPT（Codex）、Claude、MiMoCode、OpenClaw、WorkBuddy、Zcode、Hermes Agent and DeepSeek Harness.
+
+Status following, draft insertion, confirmed sending and tool approval are separate capabilities, and support varies by tool and operating system. See the [Agent integration matrix](pc/docs/agent-integration-audit.md). Device features are enabled from the actual capabilities in its `hello` response.
 
 ## Hardware
 
@@ -39,6 +51,11 @@ Status, draft insertion, confirmed sending and tool approval are separate capabi
 | Transport | Native USB CDC and 2.4 GHz Wi-Fi / WSS |
 
 See the [board definition](firmware-s3/boards/t_keyboard_voice_esp32s3.json) and [pin_config.h](firmware-s3/include/pin_config.h).
+
+### Hardware and firmware resources
+
+- [Official LILYGO T-Keyboard Voice hardware repository](https://github.com/Xinyuan-LilyGO/T-Keyboard-Voice): hardware documentation, schematics and companion source.
+- [LILYGO Spark](https://lilygo.cc/pages/lilygo-spark): LILYGO's official firmware resource page with more fun firmware and examples for supported hardware. Follow the page instructions to download a compatible image and use its one-click flashing flow. Confirm the target model and back up any configuration before flashing other firmware.
 
 ### Display layout
 
@@ -66,18 +83,19 @@ Supply your own service API keys. Speech, model and media-generation usage may i
 
 Persisted user bindings take precedence. K1–K5 correspond to SW1–SW5 in the protocol.
 
-| Gesture | Default action |
+| Gesture | Desktop default action |
 | --- | --- |
-| K1 short press | Confirm / send; allow a pending approval |
-| Hold K1, then release | Start capture after approximately 500 ms; release to finish and transcribe |
-| K2 short press | Previous session |
-| K3 short press | Next session |
+| K1 short press | Cycle the companion or component animation |
+| Hold K1, then release | Start dictation after approximately 500 ms; release to finish and transcribe |
+| K2 short press | Confirm / send; allow a pending approval |
+| K2 long press | Unassigned |
+| K3 short or long press | Unassigned |
 | K4 short press | Back / cancel; deny a pending approval |
-| K4 long press, then release | Power off after the default 3 seconds; configurable from 2–10 seconds or as deep sleep |
-| K5 short press | Cycle companion animation states |
+| K4 long press | Unassigned as a normal button action; power management still powers off after the default 3 seconds and can be configured from 2–10 seconds or as deep sleep |
+| K5 short press | Cycle the companion or component animation |
 | K5 long press, then release | Start / stop real-time conversation |
 
-K4 long-press belongs to power management. Confirming a voice draft is different from approving an Agent tool request.
+K4 long-press belongs exclusively to power management and is not a normal button binding. Persisted user bindings take precedence over desktop defaults. Confirming a voice draft is different from approving an Agent tool request.
 
 ### 3. Configure Wi-Fi
 

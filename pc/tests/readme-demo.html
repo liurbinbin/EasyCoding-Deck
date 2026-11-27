@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>EasyCoding Deck · 五屏设备动画模拟</title>
+  <style>
+    :root { color-scheme:light; --accent:#0f766e; --ink:#14151a; --muted:#626976; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#e9eeed; color:var(--ink); font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+    #scene { width:1000px; height:510px; padding:24px 34px; display:flex; flex-direction:column; gap:12px; background:#f0f4f2; }
+    h1,p { margin:0; }
+    .masthead { display:flex; align-items:flex-start; justify-content:space-between; height:88px; flex-shrink:0; }
+    .eyebrow { color:var(--accent); font-size:11px; font-weight:700; letter-spacing:2.2px; margin-bottom:5px; }
+    h1 { font-size:27px; font-weight:650; letter-spacing:-.6px; }
+    .subtitle { color:var(--muted); font-size:12px; margin-top:5px; }
+    .simulation { border:1px solid #a8c4bd; color:#225c51; border-radius:7px; padding:7px 11px; font-size:11px; font-weight:600; }
+    .section-label { display:flex; align-items:center; justify-content:space-between; height:24px; flex-shrink:0; }
+    .section-label strong { font-size:14px; font-weight:650; }
+    .section-label span { font-size:11px; color:var(--muted); }
+    .hardware { height:234px; flex-shrink:0; padding:14px 0 0; border:1px solid #cbd6d0; border-radius:16px; background:#dbe2dd; }
+    .hardware-top { margin:0 24px 13px; color:#586960; display:flex; justify-content:space-between; font:9px Consolas,monospace; letter-spacing:1px; }
+    .screen-row { display:flex; justify-content:center; gap:42px; }
+    .screen-unit { width:142px; text-align:center; }
+    .bezel { width:142px; height:142px; padding:7px; background:#202724; border:1px solid #35473e; border-radius:12px; box-shadow:0 3px 5px #10221820; }
+    .screen { width:128px; height:128px; background:#050909; border:1px solid #183b34; color:#eaf5ef; display:flex; flex-direction:column; justify-content:center; align-items:center; overflow:hidden; font-family:Consolas,"Segoe UI",monospace; }
+    .screen-title { font-size:11px; color:#67d3cd; letter-spacing:.4px; }
+    .screen-body { font-size:19px; line-height:1.25; margin-top:13px; }
+    .screen-note { font-size:8px; color:#96b8ac; margin-top:12px; }
+    .screen img { display:block; width:120px; height:120px; object-fit:contain; image-rendering:pixelated; }
+    .screen-unit .key { width:53px; height:13px; border:1px solid #aebdb4; border-bottom-width:3px; background:#f1f4f1; border-radius:4px; margin:10px auto 0; font-size:8px; line-height:10px; color:#56665d; }
+    .legend { display:grid; grid-template-columns:repeat(5,142px); gap:42px; justify-content:center; text-align:center; font-size:11px; color:#56665d; margin-top:12px; }
+    .playback-note { display:flex; align-items:center; justify-content:space-between; height:35px; flex-shrink:0; color:#59665f; font-size:11px; }
+    .disclaimer { border-top:1px solid #cfdcd3; padding-top:10px; font-size:10px; color:#52635a; display:flex; justify-content:space-between; }
+  </style>
+</head>
+<body>
+  <main id="scene" aria-label="LILYGO T-Keyboard Voice 五屏设备动画模拟">
+    <header class="masthead">
+      <div><p class="eyebrow">EASYCODING DECK · LILYGO T-KEYBOARD VOICE</p><h1>五屏设备动画效果</h1><p class="subtitle">Five-screen device preview · keyboard-only simulation</p></div>
+      <span class="simulation">设备模拟 / DEVICE SIMULATION</span>
+    </header>
+    <div class="section-label"><strong>五屏五键 <span>ESP32-S3 · T-Keyboard Voice V0.3</span></strong><span>桌面端默认键位 + 示例已同步形象</span></div>
+    <section class="hardware" aria-label="五屏五键设备示意，非硬件照片">
+      <div class="hardware-top"><span>LILYGO T-KEYBOARD VOICE · ESP32-S3</span><span>5 × 128 × 128 · LAYOUT SIMULATION</span></div>
+      <div class="screen-row">
+        <div class="screen-unit"><div class="bezel"><div class="screen" data-screen="1"><span class="screen-note">运行生成脚本加载动画</span></div></div><div class="key">K1</div></div>
+        <div class="screen-unit"><div class="bezel"><div class="screen" data-screen="2"><span class="screen-title">SEND</span><span class="screen-body">KEY 2</span><span class="screen-note">SHORT PRESS</span></div></div><div class="key">K2</div></div>
+        <div class="screen-unit"><div class="bezel"><div class="screen" data-screen="3"><span class="screen-title">MESSAGE</span><span class="screen-body">ready</span><span class="screen-note">LIVE STATUS</span></div></div><div class="key">K3</div></div>
+        <div class="screen-unit"><div class="bezel"><div class="screen" data-screen="4"><span class="screen-title">CANCEL</span><span class="screen-body">KEY 4</span><span class="screen-note">SHORT PRESS</span></div></div><div class="key">K4</div></div>
+        <div class="screen-unit"><div class="bezel"><div class="screen" data-screen="5"><span class="screen-title">IDLE</span><span class="screen-body">Codex</span><span class="screen-note">AGENT / TASK</span></div></div><div class="key">K5</div></div>
+      </div>
+      <div class="legend"><span>① 形象 Avatar</span><span>② 确认 Confirm</span><span>③ 消息 Message</span><span>④ 返回 Cancel</span><span>⑤ 状态 Status</span></div>
+    </section>
+    <div class="playback-note"><span>屏幕 1：working.mp4 · 从第一帧直接播放</span><span>Animation starts immediately · No boot sequence</span></div>
+    <footer class="disclaimer"><span>模拟演示，非实机录像；非启动耗时测试。</span><span>Simulation only · Not a hardware recording or boot-time benchmark.</span></footer>
+  </main>
+  <script>
+    // 只加载生成器注入的内嵌图片，不访问网络、设备或用户配置。
+    const source = "__AVATAR_GIF_DATA__";
+    if (source.startsWith("data:image/gif;base64,")) {
+      const image = document.createElement("img");
+      image.alt = "用户指定的 working.mp4 动画（示例已同步形象）";
+      image.src = source;
+      document.querySelector('[data-screen="1"]').replaceChildren(image);
+    }
+    window.readmeDemo = { ready:true };
+  </script>
+</body>
+</html>

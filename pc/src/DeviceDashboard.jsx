@@ -214,7 +214,7 @@ const S3_CUSTOM_ACTION_OPTIONS = [
 ];
 export const S3_BUTTON_CONTROL_ROWS = [
   ...[1, 2, 3, 4, 5].flatMap((key) => {
-    const shortDefaults = ["page_enter", "session_previous", "session_next", "page_back", "component_center"];
+    const shortDefaults = ["component_center", "page_enter", "disabled", "page_back", "component_center"];
     const longDefaults = ["voice_ptt", "disabled", "disabled", "disabled", "realtime_chat"];
     const rows = [
       { id: `s3_sw${key}_short`, controlId: `s3_sw${key}`, label: `按键 ${key} 短按`, event: `button.sw${key}.short_press`, defaultAction: shortDefaults[key - 1], actionOptions: S3_CUSTOM_ACTION_OPTIONS, supportsValue: true },
